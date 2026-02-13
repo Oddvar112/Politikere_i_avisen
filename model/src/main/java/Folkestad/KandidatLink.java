@@ -17,7 +17,6 @@ import lombok.ToString;
 import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
 
-
 @Entity
 @Getter
 @Setter
