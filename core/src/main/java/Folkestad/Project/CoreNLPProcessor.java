@@ -2,7 +2,7 @@ package folkestad.project;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
+// import java.util.Properties; // Removed unused import
 // CoreNLP imports commented out
 // import edu.stanford.nlp.ling.CoreAnnotations;
 // import edu.stanford.nlp.ling.CoreLabel;
@@ -13,7 +13,7 @@ import java.util.Properties;
  * CoreNLPProcessor håndterer all Stanford CoreNLP-funksjonalitet for navnegjenkjenning.
  * Denne klassen er ansvarlig for å konfigurere og kjøre CoreNLP pipeline samt
  * ekstrahering av person-entiteter fra tekst.
- * 
+ *
  * NOTE: CoreNLP functionality temporarily disabled - methods return empty/dummy values
  */
 public class CoreNLPProcessor {
@@ -63,7 +63,7 @@ public class CoreNLPProcessor {
 
         return names;
         */
-        
+
         // Return empty list when CoreNLP is disabled
         return new ArrayList<>();
     }
@@ -81,9 +81,10 @@ public class CoreNLPProcessor {
         props.setProperty("coref.algorithm", "neural");
         return new StanfordCoreNLP(props);
         */
-        
+
         // Return null when CoreNLP is disabled
         return null;
     }
 }
+
 

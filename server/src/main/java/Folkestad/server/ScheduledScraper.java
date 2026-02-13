@@ -26,23 +26,36 @@ public class ScheduledScraper {
 
     @Autowired
     private ScraperStart scraperStart;
-    
+
     @Autowired
     private KandidateAnalysis kandidateAnalysis;
 
     /**
-     * Kjører scraper asynkront ved oppstart.
-     * Dette blokkerer ikke applikasjonens oppstart.
+     * Initialiserer scraping ved applikasjonsstart.
      */
     @PostConstruct
     public void initiateScraping() {
-        LOGGER.info("=== Initierer asynkron scraping ved oppstart ===");
-        // Starter scraping asynkront for å ikke blokkere oppstart
+        LOGGER.info("=== Applikasjon startet raskt - scraping vil starte ved første planlagte kjøring ===");
+    }
+
+
+    /**
+     * Kjører planlagt scraper med fast intervall.
+     */
+    @Scheduled(fixedRate = 10800000, initialDelay = 60000) // 3 timer, med 1 min initial delay
+    public void runScheduledScraper() {
+        if (isShuttingDown.get()) {
+            LOGGER.info("Applikasjonen er under avslutning, hopper over planlagt scraping");
+            return;
+        }
+
+        LOGGER.info("=== Starter planlagt scraper ===");
         runScraperAsync();
     }
 
     /**
-     * Asynkron wrapper for scraping
+     * Asynkron wrapper for scraping.
+     * @return CompletableFuture<Void> som indikerer at scraping er ferdig
      */
     @Async
     public CompletableFuture<Void> runScraperAsync() {
@@ -55,21 +68,21 @@ public class ScheduledScraper {
             try {
                 LOGGER.info("=== Starter asynkron scraping ===");
                 long startTime = System.currentTimeMillis();
-                
+
                 // Sjekk shutdown status før hver tung operasjon
                 if (!isShuttingDown.get()) {
                     scraperStart.startScrapingKandidatNames();
                 }
-                
+
                 if (!isShuttingDown.get()) {
                     LOGGER.info("Starter caching av analyse data...");
                     kandidateAnalysis.analyzeKandidatData();
                     LOGGER.info("Caching av analyse data fullført");
                 }
-                
+
                 long endTime = System.currentTimeMillis();
                 LOGGER.info("=== Asynkron scraping fullført på {} ms ===", (endTime - startTime));
-                
+
             } catch (Exception e) {
                 LOGGER.error("Feil under asynkron scraping: ", e);
             }
@@ -77,28 +90,15 @@ public class ScheduledScraper {
 
         return currentScrapingTask;
     }
-    /**
-     * Kjører planlagt scraper med fast intervall.
-     */
-    @Scheduled(fixedRate = 10800000, initialDelay = 300000) // 3 timer, med 5 min initial delay
-    public void runScheduledScraper() {
-        if (isShuttingDown.get()) {
-            LOGGER.info("Applikasjonen er under avslutning, hopper over planlagt scraping");
-            return;
-        }
-        
-        LOGGER.info("=== Starter planlagt scraper ===");
-        runScraperAsync();
-    }
 
     /**
-     * Håndterer graceful shutdown
+     * Håndterer graceful shutdown.
      */
     @PreDestroy
     public void onShutdown() {
         LOGGER.info("=== Forbereder avslutning av ScheduledScraper ===");
         isShuttingDown.set(true);
-        
+
         // Vent på at pågående scraping fullføres (maks 30 sekunder)
         if (currentScrapingTask != null && !currentScrapingTask.isDone()) {
             try {
@@ -109,15 +109,16 @@ public class ScheduledScraper {
                 currentScrapingTask.cancel(true);
             }
         }
-        
+
         LOGGER.info("=== ScheduledScraper avsluttet ===");
     }
 
     /**
-     * Lytter på context closed event for ekstra sikkerhet
+     * Lytter på context closed event for ekstra sikkerhet.
      */
     @EventListener(ContextClosedEvent.class)
     public void onContextClosed() {
         onShutdown();
     }
+
 }

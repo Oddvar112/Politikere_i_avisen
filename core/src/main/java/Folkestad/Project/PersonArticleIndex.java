@@ -9,7 +9,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Holder oversikt over hvilke artikler hver person er nevnt i.
+ * PersonArticleIndex holder oversikt over hvilke artikler hver person er nevnt
+ * i.
+ * Gir metoder for å legge til og hente personer og artikler.
  */
 public class PersonArticleIndex {
     @Getter
@@ -18,7 +20,7 @@ public class PersonArticleIndex {
     /**
      * Legger til en artikkellenke for en person.
      *
-     * @param person personen som skal knyttes til artikkelen
+     * @param person     Personen som skal knyttes til artikkelen
      * @param articleUrl URL til artikkelen
      */
     public void addMention(final String person, final String articleUrl) {
@@ -28,7 +30,7 @@ public class PersonArticleIndex {
     /**
      * Legger til flere personer for én artikkel.
      *
-     * @param persons samling av personer som skal knyttes til artikkelen
+     * @param persons    Samling av personer som skal knyttes til artikkelen
      * @param articleUrl URL til artikkelen
      */
     public void addMentions(final Collection<String> persons, final String articleUrl) {
@@ -40,8 +42,8 @@ public class PersonArticleIndex {
     /**
      * Henter alle artikler en person er nevnt i.
      *
-     * @param person personen som skal søkes etter
-     * @return sett med artikkel-URLer hvor personen er nevnt
+     * @param person Personen som skal søkes etter
+     * @return Set med artikkel-URLer hvor personen er nevnt
      */
     public Set<String> getArticlesForPerson(final String person) {
         return index.getOrDefault(person, Collections.emptySet());
@@ -50,9 +52,12 @@ public class PersonArticleIndex {
     /**
      * Henter alle personer som er registrert i indeksen.
      *
-     * @return sett med alle personnavn
+     * @return Set med alle personnavn
      */
     public Set<String> getAllPersons() {
         return index.keySet();
     }
 }
+
+
+

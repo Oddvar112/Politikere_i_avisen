@@ -26,7 +26,6 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class KandidatLink {
 
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @EqualsAndHashCode.Include
@@ -50,7 +49,7 @@ public class KandidatLink {
      *
      * @param link URL-en som skal lagres
      */
-    public void setLinkAndDetectNettsted(String link) {
+    public void setLinkAndDetectNettsted(final String link) {
         this.link = link;
         this.nettsted = Nettsted.parseFromUrl(link).orElse(null);
     }
@@ -58,11 +57,11 @@ public class KandidatLink {
     /**
      * Oppretter en KandidatLink med lenke og automatisk nettsted-identifisering.
      *
-     * @param link URL-en
+     * @param link     URL-en
      * @param kandidat Kandidaten som lenken tilhører
      * @return Ny KandidatLink med nettsted automatisk satt
      */
-    public static KandidatLink createWithDetectedNettsted(String link, KandidatStortingsvalg kandidat) {
+    public static KandidatLink createWithDetectedNettsted(final String link, final KandidatStortingsvalg kandidat) {
         KandidatLink kandidatLink = new KandidatLink();
         kandidatLink.setLinkAndDetectNettsted(link);
         kandidatLink.setKandidat(kandidat);

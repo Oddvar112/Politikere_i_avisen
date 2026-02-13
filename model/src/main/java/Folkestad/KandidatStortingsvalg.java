@@ -73,10 +73,10 @@ public class KandidatStortingsvalg {
 
     /**
      * Legger til en KandidatLink og sikrer bidireksjonell synkronisering.
-     * 
+     *
      * @param kandidatLink KandidatLink som skal legges til
      */
-    public void addLink(KandidatLink kandidatLink) {
+    public void addLink(final KandidatLink kandidatLink) {
         if (kandidatLink != null) {
             this.links.add(kandidatLink);
             kandidatLink.setKandidat(this);
@@ -85,13 +85,14 @@ public class KandidatStortingsvalg {
 
     /**
      * Fjerner en KandidatLink og sikrer bidireksjonell synkronisering.
-     * 
+     *
      * @param kandidatLink KandidatLink som skal fjernes
      */
-    public void removeLink(KandidatLink kandidatLink) {
+    public void removeLink(final KandidatLink kandidatLink) {
         if (kandidatLink != null) {
             this.links.remove(kandidatLink);
             kandidatLink.setKandidat(null);
         }
     }
 }
+

@@ -5,9 +5,11 @@ import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
 
 /**
- * Predicate for determining if a given Jsoup Document represents a genuine NRK article.
+ * Predicate for determining if a given Jsoup Document represents a genuine NRK
+ * article.
  * <p>
- * All NRK articles have an author. If the document is not an article (e.g., front page or urix.no),
+ * All NRK articles have an author. If the document is not an article (e.g.,
+ * front page or urix.no),
  * the author will be "NRK" or missing.
  * </p>
  */

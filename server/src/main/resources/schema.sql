@@ -1,16 +1,3 @@
-CREATE TABLE IF NOT EXISTS person (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS person_link (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    link VARCHAR(255) NOT NULL,
-    nettsted VARCHAR(50),
-    person_id BIGINT NOT NULL,
-    FOREIGN KEY (person_id) REFERENCES person(id) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS kandidat_link (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     link VARCHAR(1000) NOT NULL,
@@ -35,4 +22,15 @@ CREATE TABLE IF NOT EXISTS kandidat_stortingsvalg (
     kjoenn VARCHAR(10),
     INDEX idx_valgdistrikt (valgdistrikt),
     INDEX idx_partikode (partikode)
+);
+
+CREATE TABLE IF NOT EXISTS innlegg (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    link VARCHAR(1000) NOT NULL UNIQUE,
+    sammendrag TEXT,
+    kompresjon_ratio DOUBLE,
+    antall_ord_original INT,
+    antall_ord_sammendrag INT,
+    INDEX idx_link (link),
+    INDEX idx_kompresjon_ratio (kompresjon_ratio)
 );

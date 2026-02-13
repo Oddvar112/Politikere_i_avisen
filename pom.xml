@@ -34,9 +34,11 @@
         <checkstyle.failOnViolation>false</checkstyle.failOnViolation>
         <jsoup.version>1.17.2</jsoup.version>
         <edustand.version>4.5.6</edustand.version>
+
         <!-- <stanford.corenlp.version>4.5.6</stanford.corenlp.version> -->
         <jaxb.version>2.3.1</jaxb.version>
         <lombok.version>1.18.30</lombok.version>
+        
     </properties>
 
     <dependencyManagement>

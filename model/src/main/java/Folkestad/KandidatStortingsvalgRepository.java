@@ -27,7 +27,7 @@ public interface KandidatStortingsvalgRepository extends JpaRepository<KandidatS
     List<KandidatStortingsvalg> findByPartikode(String partikode);
 
     /**
-     * @return liste med alle kandidater med links 
+     * @return liste med alle kandidater med links
      */
     @Query("SELECT k FROM KandidatStortingsvalg k LEFT JOIN FETCH k.links")
     List<KandidatStortingsvalg> findAllWithLinks();
@@ -35,7 +35,7 @@ public interface KandidatStortingsvalgRepository extends JpaRepository<KandidatS
     /**
      * Finn alle kandidater for et bestemt parti og valgdistrikt.
      *
-     * @param partikode partikoden som skal søkes etter
+     * @param partikode    partikoden som skal søkes etter
      * @param valgdistrikt valgdistriktet som skal søkes etter
      * @return liste med kandidater fra det spesifiserte partiet og valgdistriktet
      */
@@ -66,3 +66,4 @@ public interface KandidatStortingsvalgRepository extends JpaRepository<KandidatS
     @Query("SELECT DISTINCT k.partikode FROM KandidatStortingsvalg k ORDER BY k.partikode")
     List<String> findAllDistinctPartikoder();
 }
+
