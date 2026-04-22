@@ -71,7 +71,7 @@ public class SentimentAnalysisService {
                     lagret++;
                 } catch (AnalysisException e) {
                     LOGGER.warn("Sentimentanalyse feilet for {} i {}: {}",
-                            kl.getKandidat().getNavn(), url, e.getMessage());
+                            kl.getKandidat().getNavn(), url, e.getMessage(), e);
                 }
             }
         }
