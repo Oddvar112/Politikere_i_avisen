@@ -3,7 +3,6 @@ package no.politikeriavisen;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
-import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.slf4j.Logger;
@@ -17,7 +16,6 @@ import org.slf4j.LoggerFactory;
 @EntityScan("no.politikeriavisen.model.entity")
 @EnableJpaRepositories("no.politikeriavisen.model.repository")
 @EnableScheduling
-@EnableCaching
 public class Main {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);

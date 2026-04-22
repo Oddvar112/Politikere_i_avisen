@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import no.politikeriavisen.core.extractor.KandidatNameExtractor;
-// import no.politikeriavisen.core.extractor.NorwegianNameExtractor; // Removed unused import
 import no.politikeriavisen.core.scraper.DagbladetScraper;
 import no.politikeriavisen.core.scraper.E24Scraper;
 import no.politikeriavisen.core.scraper.NRKScraper;

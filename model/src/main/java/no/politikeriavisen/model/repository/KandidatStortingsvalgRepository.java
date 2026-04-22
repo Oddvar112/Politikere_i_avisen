@@ -12,6 +12,11 @@ import java.util.List;
 public interface KandidatStortingsvalgRepository extends JpaRepository<KandidatStortingsvalg, Long> {
 
     /**
+     * @return antall kandidater i tabellen
+     */
+    long count();
+
+    /**
      * Finn alle kandidater for et bestemt valgdistrikt.
      *
      * @param valgdistrikt valgdistriktet som skal søkes etter

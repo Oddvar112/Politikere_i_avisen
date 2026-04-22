@@ -1,12 +1,12 @@
 package no.politikeriavisen.server.service;
 
-import no.politikeriavisen.dto.DataDTO;
 import no.politikeriavisen.core.analysis.KandidateAnalysis;
 import no.politikeriavisen.core.analysis.KildeDataAnalyzer;
-import no.politikeriavisen.model.repository.InnleggRepository;
-import no.politikeriavisen.dto.SammendragDTO;
-import no.politikeriavisen.dto.Person;
 import no.politikeriavisen.dto.ArtikelDTO;
+import no.politikeriavisen.dto.DataDTO;
+import no.politikeriavisen.dto.Person;
+import no.politikeriavisen.dto.SammendragDTO;
+import no.politikeriavisen.model.repository.InnleggRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;

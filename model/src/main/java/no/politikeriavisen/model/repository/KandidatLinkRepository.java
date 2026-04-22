@@ -4,8 +4,18 @@ import no.politikeriavisen.model.entity.KandidatLink;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface KandidatLinkRepository extends JpaRepository<KandidatLink, Long> {
+
+    /**
+     * Eksplisitt deklarasjon for IDE-er som ikke plukker opp arvede CrudRepository-metoder riktig.
+     *
+     * @param entities kandidatlenker som skal lagres
+     * @param <S>      subtype av KandidatLink
+     * @return lagrede entiteter
+     */
+    <S extends KandidatLink> List<S> saveAll(Iterable<S> entities);
 
     /**
      * SQL-basert gruppering som returnerer alle lenker per kandidat.
@@ -28,4 +38,19 @@ public interface KandidatLinkRepository extends JpaRepository<KandidatLink, Long
             + "ORDER BY ks.partinavn, ks.navn",
             nativeQuery = true)
     List<Object[]> findKandidatNavnWithLinks();
+
+    @Query(value = "SELECT ks.navn, "
+            + "ks.partinavn, "
+            + "ks.alder, "
+            + "ks.kjoenn, "
+            + "GROUP_CONCAT(DISTINCT ks.valgdistrikt ORDER BY ks.valgdistrikt SEPARATOR ',') as alle_valgdistrikt, "
+            + "GROUP_CONCAT(kl.link ORDER BY kl.link SEPARATOR ',') as alle_lenker, "
+            + "GROUP_CONCAT(DATE_FORMAT(kl.scraped_at, '%Y-%m-%d %H:%i:%s') ORDER BY kl.link SEPARATOR ',') as alle_scraped_at "
+            + "FROM kandidat_link kl "
+            + "JOIN kandidat_stortingsvalg ks ON kl.kandidat_navn = ks.navn "
+            + "WHERE kl.link LIKE CONCAT('%', :domain, '%') "
+            + "GROUP BY ks.navn, ks.partinavn, ks.alder, ks.kjoenn "
+            + "ORDER BY ks.partinavn, ks.navn",
+            nativeQuery = true)
+    List<Object[]> findKandidatNavnWithLinksByDomain(@Param("domain") String domain);
 }

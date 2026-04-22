@@ -74,12 +74,6 @@ public class ScheduledScraper {
                     scraperStart.startScrapingKandidatNames();
                 }
 
-                if (!isShuttingDown.get()) {
-                    LOGGER.info("Tømmer analyse-cache...");
-                    kandidateAnalysis.oppdater();
-                    LOGGER.info("Analyse-cache tømt, vil re-beregnes ved neste forespørsel");
-                }
-
                 long endTime = System.currentTimeMillis();
                 LOGGER.info("=== Asynkron scraping fullført på {} ms ===", (endTime - startTime));
 
