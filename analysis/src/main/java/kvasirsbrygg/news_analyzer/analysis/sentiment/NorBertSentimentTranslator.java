@@ -42,7 +42,7 @@ class NorBertSentimentTranslator implements Translator<String, SentimentScore> {
 
     @Override
     public SentimentScore processOutput(final TranslatorContext ctx, final NDList list) {
-        NDArray logits = list.getFirst();
+        NDArray logits = list.get(0);
 
         NDArray exp = logits.exp();
         NDArray probabilities = exp.div(exp.sum());
