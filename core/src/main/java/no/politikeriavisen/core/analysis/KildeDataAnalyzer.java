@@ -1,10 +1,10 @@
 package no.politikeriavisen.core.analysis;
 
 import java.time.LocalDate;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import no.politikeriavisen.dto.ArtikelDTO;
@@ -12,20 +12,9 @@ import no.politikeriavisen.dto.DataDTO;
 import no.politikeriavisen.dto.Person;
 import org.springframework.stereotype.Component;
 
-/**
- * Analyserer og filtrerer kandidatdata basert på kilde.
- */
 @Component
 public class KildeDataAnalyzer {
 
-    /**
-     * Filtrerer rådata basert på kilde og returnerer dataDTO.
-     *
-     * @param rawData Liste med Object[] fra database
-     * @param kilde   Kilde å filtrere på ("vg.no", "nrk.no", "e24.no",
-     *                "dagbladet.no", "ALT" for alle)
-     * @return dataDTO med filtrerte data for valgt kilde
-     */
     public DataDTO analyzeDataByKilde(final List<Object[]> rawData, final String kilde) {
 
         if (rawData == null || rawData.isEmpty()) {
@@ -47,19 +36,16 @@ public class KildeDataAnalyzer {
             String valgdistrikt = (String) rad[4];
             String lenkerString = (String) rad[5];
             String scrapedAtString = (String) rad[6];
+            String[] alleGirSentiment = splitOrEmpty((String) rad[7]);
+            String[] alleGirPositiv = splitOrEmpty((String) rad[8]);
+            String[] alleGirNegativ = splitOrEmpty((String) rad[9]);
+            String[] alleFaarSentiment = splitOrEmpty((String) rad[10]);
+            String[] alleFaarPositiv = splitOrEmpty((String) rad[11]);
+            String[] alleFaarNegativ = splitOrEmpty((String) rad[12]);
 
             if (lenkerString != null && !lenkerString.isEmpty()) {
                 String[] alleLenker = lenkerString.split(",");
-                String[] alleScrapedAt;
-                if (scrapedAtString != null && !scrapedAtString.isEmpty()) {
-                    if (scrapedAtString.contains(",")) {
-                        alleScrapedAt = scrapedAtString.split(",");
-                    } else {
-                        alleScrapedAt = new String[]{scrapedAtString};
-                    }
-                } else {
-                    alleScrapedAt = new String[0];
-                }
+                String[] alleScrapedAt = splitOrEmpty(scrapedAtString);
 
                 List<ArtikelDTO> artikler = new ArrayList<>();
                 for (int i = 0; i < alleLenker.length; i++) {
@@ -68,9 +54,14 @@ public class KildeDataAnalyzer {
                         ArtikelDTO artikkel = new ArtikelDTO();
                         artikkel.setLenke(lenke);
                         if (i < alleScrapedAt.length) {
-                            String scrapedAtStr = alleScrapedAt[i].trim();
-                            artikkel.setScraped(LocalDate.parse(scrapedAtStr.substring(0, 10)));
+                            artikkel.setScraped(LocalDate.parse(alleScrapedAt[i].trim().substring(0, 10)));
                         }
+                        artikkel.setGirSentiment(valueAt(alleGirSentiment, i));
+                        artikkel.setGirPositivScore(doubleAt(alleGirPositiv, i));
+                        artikkel.setGirNegativScore(doubleAt(alleGirNegativ, i));
+                        artikkel.setFaarSentiment(valueAt(alleFaarSentiment, i));
+                        artikkel.setFaarPositivScore(doubleAt(alleFaarPositiv, i));
+                        artikkel.setFaarNegativScore(doubleAt(alleFaarNegativ, i));
                         artikler.add(artikkel);
                     }
                 }
@@ -86,94 +77,77 @@ public class KildeDataAnalyzer {
                     person.setLenker(artikler);
 
                     allePersoner.add(person);
-
                     partiMentions.merge(normalizedParti, artikler.size(), Integer::sum);
-
                     if (alder != null) {
                         aldersListe.add(alder);
                     }
-
                     if (kjoenn != null && !kjoenn.isEmpty()) {
                         kjoennRatio.merge(kjoenn, 1, Integer::sum);
                     }
-
                     totaltAntallArtikler += artikler.size();
                 }
             }
         }
 
-        double gjennomsnittligAlder;
-        if (!aldersListe.isEmpty()) {
-            gjennomsnittligAlder = aldersListe.stream()
-                    .mapToInt(Integer::intValue)
-                    .average()
-                    .orElse(0.0);
-        } else {
-            gjennomsnittligAlder = 0.0;
-        }
-
-        Map<String, Double> partiProsentFordeling = beregnPartiProsent(partiMentions);
-        Map<String, Double> kjoennProsentFordeling = beregnKjoennProsent(kjoennRatio);
+        double gjennomsnittligAlder = aldersListe.isEmpty() ? 0.0
+                : aldersListe.stream().mapToInt(Integer::intValue).average().orElse(0.0);
 
         return new DataDTO(
                 gjennomsnittligAlder,
                 totaltAntallArtikler,
                 new ArrayList<>(allePersoner),
                 kjoennRatio,
-                kjoennProsentFordeling,
+                beregnKjoennProsent(kjoennRatio),
                 partiMentions,
-                partiProsentFordeling,
+                beregnPartiProsent(partiMentions),
                 kilde);
     }
 
-    /**
-     * Beregner prosentvis fordeling av parti mentions.
-     *
-     * @param partiMentions Map med parti og antall artikler
-     * @return Map med parti og prosent-andel (0-100)
-     */
+    private String[] splitOrEmpty(final String s) {
+        if (s == null || s.isEmpty()) {
+            return new String[0];
+        }
+        return s.split(",", -1);
+    }
+
+    private String valueAt(final String[] arr, final int i) {
+        if (i < arr.length && !arr[i].isBlank()) {
+            return arr[i].trim();
+        }
+        return null;
+    }
+
+    private Double doubleAt(final String[] arr, final int i) {
+        if (i < arr.length && !arr[i].isBlank()) {
+            try {
+                return Double.parseDouble(arr[i].trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
+    }
+
     public Map<String, Double> beregnPartiProsent(final Map<String, Integer> partiMentions) {
         if (partiMentions == null || partiMentions.isEmpty()) {
             return new HashMap<>();
         }
-
-        int totaltAntall = partiMentions.values().stream()
-                .mapToInt(Integer::intValue)
-                .sum();
-
-        if (totaltAntall == 0) {
+        int totalt = partiMentions.values().stream().mapToInt(Integer::intValue).sum();
+        if (totalt == 0) {
             return new HashMap<>();
         }
-
         return partiMentions.entrySet().stream()
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> (entry.getValue() * 100.0) / totaltAntall));
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> (e.getValue() * 100.0) / totalt));
     }
 
-    /**
-     * Beregner prosentvis fordeling av kjønn.
-     *
-     * @param kjoennRatio Map med kjønn og antall personer
-     * @return Map med kjønn og prosent-andel (0-100)
-     */
     public Map<String, Double> beregnKjoennProsent(final Map<String, Integer> kjoennRatio) {
         if (kjoennRatio == null || kjoennRatio.isEmpty()) {
             return new HashMap<>();
         }
-
-        int totaltAntall = kjoennRatio.values().stream()
-                .mapToInt(Integer::intValue)
-                .sum();
-
-        if (totaltAntall == 0) {
+        int totalt = kjoennRatio.values().stream().mapToInt(Integer::intValue).sum();
+        if (totalt == 0) {
             return new HashMap<>();
         }
-
         return kjoennRatio.entrySet().stream()
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> (entry.getValue() * 100.0) / totaltAntall));
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> (e.getValue() * 100.0) / totalt));
     }
-
 }

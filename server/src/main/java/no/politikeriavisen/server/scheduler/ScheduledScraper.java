@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import no.politikeriavisen.core.ScraperStart;
 import no.politikeriavisen.core.analysis.KandidateAnalysis;
+import no.politikeriavisen.core.analysis.SentimentAnalysisService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -29,6 +30,9 @@ public class ScheduledScraper {
 
     @Autowired
     private KandidateAnalysis kandidateAnalysis;
+
+    @Autowired
+    private SentimentAnalysisService sentimentAnalysisService;
 
     /**
      * Initialiserer scraping ved applikasjonsstart.
@@ -72,6 +76,10 @@ public class ScheduledScraper {
                 // Sjekk shutdown status før hver tung operasjon
                 if (!isShuttingDown.get()) {
                     scraperStart.startScrapingKandidatNames();
+                }
+
+                if (!isShuttingDown.get()) {
+                    sentimentAnalysisService.analyserUbehandlede();
                 }
 
                 long endTime = System.currentTimeMillis();

@@ -1,7 +1,5 @@
 package no.politikeriavisen.dto;
 
-import java.time.LocalDate;
-
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -9,9 +7,8 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ArtikelDTO {
-    private String lenke;
-    private LocalDate scraped;
+public class PersonSentimentDTO {
+    private String personNavn;
     private String girSentiment;
     private Double girPositivScore;
     private Double girNegativScore;

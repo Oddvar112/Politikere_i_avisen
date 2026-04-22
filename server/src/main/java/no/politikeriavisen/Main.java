@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
  * The main class for the Server Application.
  * This class is responsible for bootstrapping the Spring Boot application.
  */
-@SpringBootApplication(scanBasePackages = {"no.politikeriavisen"})
+@SpringBootApplication(scanBasePackages = {"no.politikeriavisen", "kvasirsbrygg.news_analyzer"})
 @EntityScan("no.politikeriavisen.model.entity")
 @EnableJpaRepositories("no.politikeriavisen.model.repository")
 @EnableScheduling

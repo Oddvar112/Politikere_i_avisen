@@ -1,36 +1,33 @@
-FROM amazoncorretto:17-alpine AS build
+FROM amazoncorretto:17 AS build
 
-# Install Maven
-RUN apk add --no-cache maven
+RUN dnf install -y maven
 
 WORKDIR /app
 
-# Copy pom files first for better caching
 COPY pom.xml .
 COPY model/pom.xml model/
 COPY core/pom.xml core/
 COPY dto/pom.xml dto/
+COPY analysis/pom.xml analysis/
 COPY server/pom.xml server/
 
-# Download dependencies
 RUN mvn dependency:go-offline -B
 
-# Copy source code
 COPY . .
 
-# Build the application
 RUN mvn clean package -DskipTests -B
 
-# Runtime stage
-FROM amazoncorretto:17-alpine
+FROM amazoncorretto:17
+
+RUN dnf install -y python3 python3-pip
 
 WORKDIR /app
 
-# Copy the built JAR from build stage
 COPY --from=build /app/server/target/server-1.0-SNAPSHOT.jar app.jar
+COPY setup/ setup/
 
-# Expose the port
+RUN pip3 install transformers torch onnx onnxruntime requests
+
 EXPOSE 8080
 
-# Run the application
 CMD ["java", "-jar", "app.jar"]

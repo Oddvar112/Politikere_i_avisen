@@ -10,8 +10,9 @@
 
     <modules>
         <module>model</module>
-        <module>core</module>
         <module>dto</module>
+        <module>analysis</module>
+        <module>core</module>
         <module>server</module>
     </modules>
 

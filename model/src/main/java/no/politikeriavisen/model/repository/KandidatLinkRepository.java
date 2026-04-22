@@ -8,30 +8,26 @@ import org.springframework.data.repository.query.Param;
 
 public interface KandidatLinkRepository extends JpaRepository<KandidatLink, Long> {
 
-    /**
-     * Eksplisitt deklarasjon for IDE-er som ikke plukker opp arvede CrudRepository-metoder riktig.
-     *
-     * @param entities kandidatlenker som skal lagres
-     * @param <S>      subtype av KandidatLink
-     * @return lagrede entiteter
-     */
     <S extends KandidatLink> List<S> saveAll(Iterable<S> entities);
 
-    /**
-     * SQL-basert gruppering som returnerer alle lenker per kandidat.
-     * Returnerer én rad per kandidat med navn, parti, alder, kjønn,
-     * valgdistrikt(er) og alle lenker som kommaseparerte strenger.
-     *
-     * @return Liste med kandidatnavn, parti, alder, kjønn, valgdistrikt(er) og
-     *         deres samlede lenker
-     */
+    List<KandidatLink> findByLink(String link);
+
+    @Query("SELECT kl FROM KandidatLink kl JOIN FETCH kl.kandidat WHERE kl.girSentiment IS NULL")
+    List<KandidatLink> findWithoutSentiment();
+
     @Query(value = "SELECT ks.navn, "
             + "ks.partinavn, "
             + "ks.alder, "
             + "ks.kjoenn, "
             + "GROUP_CONCAT(DISTINCT ks.valgdistrikt ORDER BY ks.valgdistrikt SEPARATOR ',') as alle_valgdistrikt, "
             + "GROUP_CONCAT(kl.link ORDER BY kl.link SEPARATOR ',') as alle_lenker, "
-            + "GROUP_CONCAT(DATE_FORMAT(kl.scraped_at, '%Y-%m-%d %H:%i:%s') ORDER BY kl.link SEPARATOR ',') as alle_scraped_at "
+            + "GROUP_CONCAT(DATE_FORMAT(kl.scraped_at, '%Y-%m-%d %H:%i:%s') ORDER BY kl.link SEPARATOR ',') as alle_scraped_at, "
+            + "GROUP_CONCAT(IFNULL(kl.gir_sentiment, '') ORDER BY kl.link SEPARATOR ',') as alle_gir_sentiment, "
+            + "GROUP_CONCAT(IFNULL(kl.gir_positiv_score, '') ORDER BY kl.link SEPARATOR ',') as alle_gir_positiv, "
+            + "GROUP_CONCAT(IFNULL(kl.gir_negativ_score, '') ORDER BY kl.link SEPARATOR ',') as alle_gir_negativ, "
+            + "GROUP_CONCAT(IFNULL(kl.faar_sentiment, '') ORDER BY kl.link SEPARATOR ',') as alle_faar_sentiment, "
+            + "GROUP_CONCAT(IFNULL(kl.faar_positiv_score, '') ORDER BY kl.link SEPARATOR ',') as alle_faar_positiv, "
+            + "GROUP_CONCAT(IFNULL(kl.faar_negativ_score, '') ORDER BY kl.link SEPARATOR ',') as alle_faar_negativ "
             + "FROM kandidat_link kl "
             + "JOIN kandidat_stortingsvalg ks ON kl.kandidat_navn = ks.navn "
             + "GROUP BY ks.navn, ks.partinavn, ks.alder, ks.kjoenn "
@@ -45,7 +41,13 @@ public interface KandidatLinkRepository extends JpaRepository<KandidatLink, Long
             + "ks.kjoenn, "
             + "GROUP_CONCAT(DISTINCT ks.valgdistrikt ORDER BY ks.valgdistrikt SEPARATOR ',') as alle_valgdistrikt, "
             + "GROUP_CONCAT(kl.link ORDER BY kl.link SEPARATOR ',') as alle_lenker, "
-            + "GROUP_CONCAT(DATE_FORMAT(kl.scraped_at, '%Y-%m-%d %H:%i:%s') ORDER BY kl.link SEPARATOR ',') as alle_scraped_at "
+            + "GROUP_CONCAT(DATE_FORMAT(kl.scraped_at, '%Y-%m-%d %H:%i:%s') ORDER BY kl.link SEPARATOR ',') as alle_scraped_at, "
+            + "GROUP_CONCAT(IFNULL(kl.gir_sentiment, '') ORDER BY kl.link SEPARATOR ',') as alle_gir_sentiment, "
+            + "GROUP_CONCAT(IFNULL(kl.gir_positiv_score, '') ORDER BY kl.link SEPARATOR ',') as alle_gir_positiv, "
+            + "GROUP_CONCAT(IFNULL(kl.gir_negativ_score, '') ORDER BY kl.link SEPARATOR ',') as alle_gir_negativ, "
+            + "GROUP_CONCAT(IFNULL(kl.faar_sentiment, '') ORDER BY kl.link SEPARATOR ',') as alle_faar_sentiment, "
+            + "GROUP_CONCAT(IFNULL(kl.faar_positiv_score, '') ORDER BY kl.link SEPARATOR ',') as alle_faar_positiv, "
+            + "GROUP_CONCAT(IFNULL(kl.faar_negativ_score, '') ORDER BY kl.link SEPARATOR ',') as alle_faar_negativ "
             + "FROM kandidat_link kl "
             + "JOIN kandidat_stortingsvalg ks ON kl.kandidat_navn = ks.navn "
             + "WHERE kl.link LIKE CONCAT('%', :domain, '%') "

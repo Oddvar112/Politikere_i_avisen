@@ -24,8 +24,9 @@
             <version>${jsoup.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-cache</artifactId>
+            <groupId>no.politikeriavisen</groupId>
+            <artifactId>analysis</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <!-- CoreNLP dependencies commented out
         <dependency>

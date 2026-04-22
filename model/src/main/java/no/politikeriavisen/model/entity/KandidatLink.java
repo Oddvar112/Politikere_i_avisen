@@ -44,6 +44,24 @@ public class KandidatLink {
     @JoinColumn(name = "kandidat_navn", nullable = false)
     private KandidatStortingsvalg kandidat;
 
+    @Column(name = "gir_sentiment", length = 10)
+    private String girSentiment;
+
+    @Column(name = "gir_positiv_score")
+    private Double girPositivScore;
+
+    @Column(name = "gir_negativ_score")
+    private Double girNegativScore;
+
+    @Column(name = "faar_sentiment", length = 10)
+    private String faarSentiment;
+
+    @Column(name = "faar_positiv_score")
+    private Double faarPositivScore;
+
+    @Column(name = "faar_negativ_score")
+    private Double faarNegativScore;
+
     /**
      * Setter lenken og identifiserer automatisk nettsted basert på URL-en.
      *
