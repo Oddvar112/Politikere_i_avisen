@@ -24,9 +24,9 @@ RUN dnf install -y python3 python3-pip
 WORKDIR /app
 
 COPY --from=build /app/server/target/server-1.0-SNAPSHOT.jar app.jar
-COPY setup/ setup/
+COPY --from=build /app/setup/ setup/
 
-RUN pip3 install transformers torch onnx onnxruntime requests
+RUN pip3 install transformers torch onnx onnxruntime onnxscript requests
 
 EXPOSE 8080
 
