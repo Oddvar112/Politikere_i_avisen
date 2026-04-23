@@ -5,8 +5,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +20,13 @@ import no.politikeriavisen.model.repository.KandidatStortingsvalgRepository;
  * 1) kandidater lagret i databasen (KandidatStortingsvalg),
  * 2) sittende regjeringsmedlemmer hentet fra data.stortinget.no,
  * 3) innvalgte stortingsrepresentanter i gjeldende stortingsperiode.
+ *
+ * Matching krever normalt minimum fornavn + etternavn. Kun en smal,
+ * hardkodet liste med svært kjente politikere ({@link #erKjentPolitiker})
+ * kan også matches på etternavn alene — dette er politikere hvor
+ * etternavnet er praktisk talt entydig ("Støre", "Vedum" osv.).
+ *
+ * Databasen vinner som kanonisk navn når samme person finnes begge steder.
  */
 @Component
 public class KandidatNameExtractor extends NorwegianNameExtractor {
@@ -62,10 +69,9 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         for (KandidatStortingsvalg kandidat : allKandidater) {
             if (kandidat.getNavn() != null && !kandidat.getNavn().trim().isEmpty()) {
                 String originalName = kandidat.getNavn().trim();
-                String lowerCaseName = originalName.toLowerCase();
+                kandidatNamesMap.put(originalName.toLowerCase(), originalName);
 
-                kandidatNamesMap.put(lowerCaseName, originalName);
-
+                // Kun hardkodede superkjente får etternavn-alias
                 if (erKjentPolitiker(originalName)) {
                     String etternavn = hentEtternavn(originalName);
                     if (etternavn != null && !etternavn.isEmpty()) {
@@ -83,11 +89,10 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
 
     /**
      * Henter sittende regjeringsmedlemmer og stortingsrepresentanter fra
-     * data.stortinget.no og legger dem til i kandidat-mappet.
-     *
-     * Regjeringsmedlemmer får automatisk etternavn-alias (likt som
-     * hardkodede kjente politikere), siden de ofte refereres med etternavn
-     * alene i artikler (f.eks. "Støre", "Vedum").
+     * data.stortinget.no og legger dem til i kandidat-mappet. Politikere
+     * fra APIet blir KUN lagt til i etternavn-mappet hvis de er i den
+     * hardkodede kjent-listen — ellers risikerer vi falske positive på
+     * vanlige etternavn ("Borch", "Moe", "Hansen" osv.).
      */
     private void beriketMedStortingApi() {
         List<String> regjering = stortingApiClient.hentRegjeringsmedlemmer();
@@ -96,10 +101,10 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         int foer = kandidatNamesMap.size();
 
         for (String navn : regjering) {
-            leggTilNavnevariant(navn, true);
+            leggTilNavnevariant(navn);
         }
         for (String navn : storting) {
-            leggTilNavnevariant(navn, false);
+            leggTilNavnevariant(navn);
         }
 
         LOGGER.info(
@@ -117,11 +122,12 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
      * Hvis en kort variant allerede finnes i mappet (fra DB), pekes den
      * fulle API-varianten til samme kanoniske navn — DB vinner alltid.
      *
-     * @param apiFullName      fullt navn fra Stortinget-API
-     * @param erRegjeringsmedlem om personen er regjeringsmedlem (får også
-     *                         etternavn-alias)
+     * Hvis navnet er i kjent-politiker-listen, legges etternavnet også til
+     * etternavn-mappet slik at "Støre"/"Vedum" alene kan matches.
+     *
+     * @param apiFullName fullt navn fra Stortinget-API
      */
-    private void leggTilNavnevariant(final String apiFullName, final boolean erRegjeringsmedlem) {
+    private void leggTilNavnevariant(final String apiFullName) {
         if (apiFullName == null || apiFullName.trim().isEmpty()) {
             return;
         }
@@ -130,7 +136,7 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         String[] parts = apiFullName.trim().split("\\s+");
 
         // Finn kanonisk form: hvis DB har kortversjonen "fornavn etternavn",
-        // bruk det navnet som canonical; ellers bruk det fulle API-navnet.
+        // bruk det navnet som kanonisk; ellers bruk det fulle API-navnet.
         String canonical = apiFullName;
         if (parts.length >= 2) {
             String kortNavn = parts[0] + " " + parts[parts.length - 1];
@@ -147,9 +153,8 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         // Legg til fulle API-navnet hvis ikke allerede i mappet (DB vinner)
         kandidatNamesMap.putIfAbsent(fullLower, canonical);
 
-        // Regjeringsmedlemmer får etternavn-alias siden avisene ofte
-        // skriver f.eks. bare "Støre" eller "Vedum" i løpende tekst.
-        if (erRegjeringsmedlem) {
+        // Etternavn-alias kun for hardkodet kjent-politiker-liste
+        if (erKjentPolitiker(canonical)) {
             String etternavn = hentEtternavn(canonical);
             if (etternavn != null && !etternavn.isEmpty()) {
                 kjentEtternavnMap.putIfAbsent(etternavn.toLowerCase(), canonical);
@@ -158,7 +163,10 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
     }
 
     /**
-     * Sjekker om en person er en kjent politiker som ofte refereres med bare etternavn.
+     * Sjekker om en person er kjent nok til å refereres med bare etternavn.
+     * Dette er en bevisst smal liste for å unngå falske positive — et vanlig
+     * etternavn som "Borch" eller "Moe" er ikke entydig selv om personen
+     * sitter i Stortinget.
      *
      * @param fullName Det fullstendige navnet
      * @return true hvis personen er kjent nok til å refereres med bare etternavn
@@ -205,6 +213,8 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
 
     /**
      * Søker etter kjente etternavn i teksten og returnerer fullstendige navn.
+     * Brukes kun for politikere i kjent-listen (Støre, Vedum osv.) hvor
+     * etternavnet er praktisk talt entydig.
      *
      * @param text Teksten som skal analyseres
      * @return Set med fullstendige navn basert på funnet etternavn
@@ -232,34 +242,68 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
     }
 
     /**
-     * Ekstraherer kandidatnavn fra tekst ved hjelp av regex, database-matching
-     * og kjente etternavn.
+     * Ekstraherer kandidatnavn fra tekst ved hjelp av regex og
+     * database-matching. Fanger både fullt navn (fornavn + etternavn,
+     * eventuelt med mellomnavn) og — for en smal hardkodet liste med
+     * svært kjente politikere — etternavn alene.
      *
      * @param text teksten som skal analyseres for kandidatnavn
-     * @return sett med ekstraherte kandidatnavn som finnes i databasen
+     * @return sett med kanoniske kandidatnavn som er identifisert i teksten
      */
     @Override
     public Set<String> extractNames(final String text) {
         loadKandidatNames();
 
         Set<String> allFoundNames = new HashSet<>();
+        if (kandidatNamesMap == null || kandidatNamesMap.isEmpty()) {
+            return allFoundNames;
+        }
 
-        if (kandidatNamesMap != null && !kandidatNamesMap.isEmpty()) {
-            List<String> regexNames = super.extractNamesWithRegex(text);
-
-            for (String regexName : regexNames) {
-                String normalizedName = regexName.toLowerCase();
-                String originalName = kandidatNamesMap.get(normalizedName);
-
-                if (originalName != null) {
-                    allFoundNames.add(originalName);
-                }
+        List<String> regexNames = super.extractNamesWithRegex(text);
+        for (String regexName : regexNames) {
+            String originalName = finnKanoniskNavn(regexName);
+            if (originalName != null) {
+                allFoundNames.add(originalName);
             }
         }
 
-        Set<String> lastNameMatches = extractKnownLastNames(text);
-        allFoundNames.addAll(lastNameMatches);
+        // Etternavn-pass: kun for politikere i den hardkodede kjent-listen
+        allFoundNames.addAll(extractKnownLastNames(text));
 
         return allFoundNames;
+    }
+
+    /**
+     * Slår opp et regex-funnet navn i kandidat-mappet, først ved eksakt
+     * lowercase-match, deretter med forkortet variant (første ord + siste
+     * ord) hvis navnet har mellomnavn.
+     *
+     * Dette gjør at "Lubna Boby Jaffery" i en artikkel matcher databasen
+     * sin registrerte "Lubna Jaffery", selv om vi ikke visste om mellomnavnet
+     * på forhånd.
+     *
+     * @param regexName navn funnet av regex i artikkelen (alltid 2+ ord)
+     * @return kanonisk navn fra mappet, eller null hvis ingen match
+     */
+    private String finnKanoniskNavn(final String regexName) {
+        if (regexName == null || regexName.isBlank()) {
+            return null;
+        }
+
+        // 1) Eksakt lowercase-match
+        String exact = kandidatNamesMap.get(regexName.toLowerCase());
+        if (exact != null) {
+            return exact;
+        }
+
+        // 2) Fallback: forkortet variant (første ord + siste ord) — kun hvis
+        //    det faktisk er mellomnavn å fjerne (3+ ord)
+        String[] parts = regexName.trim().split("\\s+");
+        if (parts.length >= 3) {
+            String kortNavn = (parts[0] + " " + parts[parts.length - 1]).toLowerCase();
+            return kandidatNamesMap.get(kortNavn);
+        }
+
+        return null;
     }
 }
