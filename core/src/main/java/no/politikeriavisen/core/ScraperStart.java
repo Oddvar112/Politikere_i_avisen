@@ -1,5 +1,6 @@
 package no.politikeriavisen.core;
 
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.Set;
@@ -7,7 +8,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
@@ -198,9 +201,18 @@ public final class ScraperStart {
             List<KandidatStortingsvalg> existingKandidatList = kandidatRepository.findAllWithLinks();
             LOGGER.info("Hentet {} eksisterende kandidater fra database", existingKandidatList.size());
 
-            Map<String, KandidatStortingsvalg> existingKandidatMap = new java.util.HashMap<>(existingKandidatList
+            // Bruk NFC-normalisert navn som nøkkel, ellers vil Unicode-varianter
+            // (f.eks. dekomponert "ø" fra Stortinget-APIet vs. prekomponert "ø"
+            // lagret i DB) ikke matche i containsKey/get — selv om MySQL sin
+            // kollasjon behandler dem som like i primærnøkkel-sjekken, og vi
+            // ville endt opp med "Duplicate entry"-feil under INSERT.
+            Map<String, KandidatStortingsvalg> existingKandidatMap = existingKandidatList
                     .stream()
-                    .collect(Collectors.toMap(KandidatStortingsvalg::getNavn, kandidat -> kandidat)));
+                    .collect(Collectors.toMap(
+                            k -> normaliserNavn(k.getNavn()),
+                            k -> k,
+                            (a, b) -> a,
+                            LinkedHashMap::new));
 
             // Auto-opprett kandidat-rader for politikere fra Stortinget-APIet
             // som vi har ekstrahert fra tekst men som mangler i databasen.
@@ -211,7 +223,7 @@ public final class ScraperStart {
             int newLinksCount = 0;
 
             for (String kandidatName : allKandidatNames) {
-                KandidatStortingsvalg kandidat = existingKandidatMap.get(kandidatName);
+                KandidatStortingsvalg kandidat = existingKandidatMap.get(normaliserNavn(kandidatName));
                 if (kandidat != null) {
                     Set<String> articleUrlsForKandidat = personArticleIndex.getArticlesForPerson(kandidatName);
 
@@ -271,20 +283,25 @@ public final class ScraperStart {
     private void autoOpprettApiKandidater(
             final Set<String> allKandidatNames,
             final Map<String, KandidatStortingsvalg> existingKandidatMap) {
-        Set<String> manglendeNavn = new HashSet<>();
+        // Merk: nøklene i existingKandidatMap er allerede NFC-normalisert.
+        // Vi normaliserer også de ekstraherte navnene før sammenligning,
+        // slik at byte-varianter av samme tegn ikke feilaktig rapporteres
+        // som manglende (og senere krasjer på Duplicate entry).
+        Set<String> manglendeNavnNormalisert = new HashSet<>();
         for (String navn : allKandidatNames) {
-            if (!existingKandidatMap.containsKey(navn)) {
-                manglendeNavn.add(navn);
+            String normalisert = normaliserNavn(navn);
+            if (!existingKandidatMap.containsKey(normalisert)) {
+                manglendeNavnNormalisert.add(normalisert);
             }
         }
-        if (manglendeNavn.isEmpty()) {
+        if (manglendeNavnNormalisert.isEmpty()) {
             LOGGER.info("Alle {} ekstraherte navn finnes allerede i databasen",
                 allKandidatNames.size());
             return;
         }
 
         LOGGER.info("{} ekstraherte navn mangler i DB — sjekker Stortinget-APIet",
-            manglendeNavn.size());
+            manglendeNavnNormalisert.size());
 
         List<StortingPerson> apiPersoner;
         try {
@@ -295,31 +312,92 @@ public final class ScraperStart {
             return;
         }
 
+        // API-nøkler også NFC-normalisert slik at match mot manglendeNavn
+        // skjer byte-for-byte uavhengig av Unicode-form fra kilden.
         Map<String, StortingPerson> apiMap = apiPersoner.stream()
             .collect(Collectors.toMap(
-                StortingPerson::fulltNavn,
+                p -> normaliserNavn(p.fulltNavn()),
                 p -> p,
                 (a, b) -> a));   // regjering vinner over representant ved duplikat
 
         String periodeLabel = "Stortinget " + stortingApiClient.gjeldendeStortingsperiode();
         List<KandidatStortingsvalg> nyeKandidater = new ArrayList<>();
-        for (String navn : manglendeNavn) {
-            StortingPerson person = apiMap.get(navn);
+        for (String navnNormalisert : manglendeNavnNormalisert) {
+            StortingPerson person = apiMap.get(navnNormalisert);
             if (person == null) {
-                LOGGER.debug("Navn '{}' ikke funnet i API-et — droppes", navn);
+                LOGGER.debug("Navn '{}' ikke funnet i API-et — droppes", navnNormalisert);
                 continue;
             }
             KandidatStortingsvalg nyKandidat = byggKandidatFraApi(person, periodeLabel);
             nyeKandidater.add(nyKandidat);
-            existingKandidatMap.put(navn, nyKandidat);
+            existingKandidatMap.put(navnNormalisert, nyKandidat);
             LOGGER.info("Auto-oppretter kandidat fra API: '{}' (parti={}, stilling={})",
-                navn, person.partinavn(), person.stilling());
+                nyKandidat.getNavn(), person.partinavn(), person.stilling());
         }
 
         if (!nyeKandidater.isEmpty()) {
-            kandidatRepository.saveAll(nyeKandidater);
-            LOGGER.info("Lagret {} nye kandidater fra Stortinget-APIet", nyeKandidater.size());
+            lagreNyeKandidaterDefensivt(nyeKandidater, existingKandidatMap);
         }
+    }
+
+    /**
+     * Lagrer nye kandidater med robust fallback: prøver først batch-innsetting,
+     * og ved eventuell {@link DataIntegrityViolationException} (typisk duplikat
+     * primærnøkkel pga. kollasjons- eller Unicode-forskjeller) faller vi
+     * tilbake til å lagre én-og-én slik at én dårlig rad ikke ruller tilbake
+     * hele transaksjonen. Kandidater som allerede finnes i DB blir hoppet over
+     * og løftet inn i {@code existingKandidatMap} slik at senere link-lagring
+     * fortsatt finner dem.
+     */
+    private void lagreNyeKandidaterDefensivt(
+            final List<KandidatStortingsvalg> nyeKandidater,
+            final Map<String, KandidatStortingsvalg> existingKandidatMap) {
+        try {
+            kandidatRepository.saveAll(nyeKandidater);
+            LOGGER.info("Lagret {} nye kandidater fra Stortinget-APIet",
+                nyeKandidater.size());
+            return;
+        } catch (DataIntegrityViolationException e) {
+            LOGGER.warn("Batch-innsetting av {} kandidater feilet pga "
+                + "integritetsbrudd — faller tilbake til én-og-én: {}",
+                nyeKandidater.size(), e.getMostSpecificCause().getMessage());
+        }
+
+        int lagret = 0;
+        int hoppetOver = 0;
+        for (KandidatStortingsvalg k : nyeKandidater) {
+            try {
+                kandidatRepository.save(k);
+                lagret++;
+            } catch (DataIntegrityViolationException ex) {
+                // Raden finnes allerede i DB under en annen Unicode-/kollasjons-variant.
+                // Vi fjerner fra existingKandidatMap slik at den videre link-lagringen
+                // ikke prøver å bruke en ikke-persistert entitet.
+                existingKandidatMap.remove(normaliserNavn(k.getNavn()));
+                hoppetOver++;
+                LOGGER.info("Kandidat '{}' finnes allerede i DB under annen form "
+                    + "— hopper over (link vil ikke bli opprettet denne runden)",
+                    k.getNavn());
+            }
+        }
+        LOGGER.info("Defensiv lagring ferdig: {} lagret, {} hoppet over",
+            lagret, hoppetOver);
+    }
+
+    /**
+     * Normaliserer navn til Unicode NFC (prekomponerte tegn) og trimmer
+     * overflødig whitespace. Nødvendig for å få konsistent sammenligning
+     * mellom navn fra forskjellige kilder (Stortinget-API, scrapete
+     * artikler, DB-innhold) som kan være i ulike Unicode-former.
+     *
+     * @param navn  rått navn, kan være {@code null}
+     * @return      normalisert navn, eller {@code null} hvis input var {@code null}
+     */
+    private static String normaliserNavn(final String navn) {
+        if (navn == null) {
+            return null;
+        }
+        return Normalizer.normalize(navn, Normalizer.Form.NFC).trim();
     }
 
     /**
@@ -340,7 +418,7 @@ public final class ScraperStart {
             alder = Period.between(person.foedselsdato(), LocalDate.now()).getYears();
         }
         return KandidatStortingsvalg.builder()
-            .navn(person.fulltNavn())
+            .navn(normaliserNavn(person.fulltNavn()))
             .valg(periodeLabel)
             .valgdistrikt(person.valgdistrikt())
             .partikode(person.partikode())
