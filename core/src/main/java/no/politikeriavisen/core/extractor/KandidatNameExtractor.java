@@ -46,6 +46,25 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         Pattern.compile("\\b([A-ZÆØÅÁÉÍÓÚÝÞÐ][a-zæøåáéíóúýþðA-ZÆØÅÁÉÍÓÚÝÞÐ]+)\\b");
 
     /**
+     * Pattern for dobbel-etternavn ("Barth Eide" osv.) — to påfølgende
+     * ord som begge starter med stor bokstav. Brukes i tillegg til
+     * ETTERNAVN_PATTERN for å fange politikere hvor etternavnet er
+     * sammensatt av to ord og ingen del er entydig alene.
+     */
+    private static final Pattern ETTERNAVN_COMPOUND_PATTERN =
+        Pattern.compile("\\b([A-ZÆØÅÁÉÍÓÚÝÞÐ][a-zæøåáéíóúýþðA-ZÆØÅÁÉÍÓÚÝÞÐ]+\\s+"
+            + "[A-ZÆØÅÁÉÍÓÚÝÞÐ][a-zæøåáéíóúýþðA-ZÆØÅÁÉÍÓÚÝÞÐ]+)\\b");
+
+    /**
+     * Kjente dobbel-etternavn hvor begge ord må matches sammen for å
+     * unngå falske positive på ett av dem alene (f.eks. "Eide" er for
+     * vanlig til å matche alene, men "Barth Eide" er entydig).
+     */
+    private static final Set<String> COMPOUND_ETTERNAVN = Set.of(
+        "barth eide"
+    );
+
+    /**
      * Standardkonstruktør.
      */
     public KandidatNameExtractor() {
@@ -180,7 +199,9 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
             "trygve slagsvold vedum", "vedum",
             "bjørnar moxnes", "moxnes",
             "sandra borch", "borch",
-            "peter christian frølich", "frølich"
+            "peter christian frølich", "frølich",
+            "jens stoltenberg", "stoltenberg",
+            "espen barth eide", "barth eide"
         };
 
         for (String fragment : kjenteNavnFragmenter) {
@@ -193,10 +214,13 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
     }
 
     /**
-     * Henter etternavnet fra et fullstendig navn.
+     * Henter etternavnet fra et fullstendig navn. For navn som slutter
+     * med et kjent dobbel-etternavn (se {@link #COMPOUND_ETTERNAVN})
+     * returneres begge ord som ett — slik at f.eks. "Espen Barth Eide"
+     * gir "Barth Eide" i stedet for bare "Eide".
      *
      * @param fullName Det fullstendige navnet
-     * @return Etternavnet, eller null hvis ikke funnet
+     * @return Etternavnet (evt. dobbel-etternavn), eller null hvis ikke funnet
      */
     private String hentEtternavn(final String fullName) {
         if (fullName == null || fullName.trim().isEmpty()) {
@@ -204,11 +228,20 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         }
 
         String[] navneDeler = fullName.trim().split("\\s+");
-        if (navneDeler.length > 1) {
-            return navneDeler[navneDeler.length - 1];
+        if (navneDeler.length < 2) {
+            return null;
         }
 
-        return null;
+        // Sjekk dobbel-etternavn først (krever minst 3 ord totalt)
+        if (navneDeler.length >= 3) {
+            String tvoOrd = navneDeler[navneDeler.length - 2] + " "
+                + navneDeler[navneDeler.length - 1];
+            if (COMPOUND_ETTERNAVN.contains(tvoOrd.toLowerCase())) {
+                return tvoOrd;
+            }
+        }
+
+        return navneDeler[navneDeler.length - 1];
     }
 
     /**
@@ -226,15 +259,26 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
             return foundNames;
         }
 
+        // 1) Enkelt-ords etternavn ("Støre", "Stoltenberg", osv.)
         Matcher matcher = ETTERNAVN_PATTERN.matcher(text);
-
         while (matcher.find()) {
             String potentialLastName = matcher.group(1);
             String lowerLastName = potentialLastName.toLowerCase();
 
             if (kjentEtternavnMap.containsKey(lowerLastName)) {
-                String fullName = kjentEtternavnMap.get(lowerLastName);
-                foundNames.add(fullName);
+                foundNames.add(kjentEtternavnMap.get(lowerLastName));
+            }
+        }
+
+        // 2) Dobbel-etternavn ("Barth Eide") — må ha egen pasning fordi
+        //    enkelt-ords-regexen ikke fanger to-ords-mønsteret
+        Matcher compoundMatcher = ETTERNAVN_COMPOUND_PATTERN.matcher(text);
+        while (compoundMatcher.find()) {
+            String potentialCompound = compoundMatcher.group(1);
+            String lowerCompound = potentialCompound.toLowerCase();
+
+            if (kjentEtternavnMap.containsKey(lowerCompound)) {
+                foundNames.add(kjentEtternavnMap.get(lowerCompound));
             }
         }
 
