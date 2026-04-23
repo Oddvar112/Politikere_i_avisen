@@ -7,11 +7,17 @@ import org.jsoup.select.Elements;
 /**
  * Predicate for determining if a given Jsoup Document represents a genuine E24
  * article.
- * <p>
- * All E24 articles have an author byline with specific data-testid attributes.
- * If the document is not an article (e.g., front page), these elements will be
- * missing.
- * </p>
+ *
+ * <p>Sjekker to mønstre for å identifisere en ekte artikkel:
+ * <ol>
+ *   <li>Gammel byline via {@code data-testid=byline:author-name} —
+ *       beholdt for bakoverkompatibilitet hvis E24 reintroduserer det.</li>
+ *   <li>Meta-tag {@code <meta property="article:author">} — alltid
+ *       satt på ekte E24-artikler (både Open Graph og faktisk forfatter).
+ *       Dette er nåværende E24 DOM-struktur per april 2026.</li>
+ * </ol>
+ *
+ * <p>Forsider og ikke-artikler har ingen av disse.
  */
 public class IsE24ArticlePredicate implements Predicate<Document> {
 
@@ -27,6 +33,14 @@ public class IsE24ArticlePredicate implements Predicate<Document> {
         if (!authorNames.isEmpty()) {
             String authorText = authorNames.text();
             if (authorText != null && !authorText.trim().isEmpty()) {
+                return true;
+            }
+        }
+
+        Elements metaAuthor = doc.select("meta[property='article:author']");
+        if (!metaAuthor.isEmpty()) {
+            String content = metaAuthor.first().attr("content");
+            if (content != null && !content.trim().isEmpty()) {
                 return true;
             }
         }
