@@ -1,15 +1,20 @@
 package no.politikeriavisen.core;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import no.politikeriavisen.core.extractor.KandidatNameExtractor;
+import no.politikeriavisen.core.extractor.StortingApiClient;
+import no.politikeriavisen.core.extractor.StortingPerson;
 import no.politikeriavisen.core.scraper.DagbladetScraper;
 import no.politikeriavisen.core.scraper.E24Scraper;
 import no.politikeriavisen.core.scraper.NRKScraper;
@@ -41,6 +46,8 @@ public final class ScraperStart {
     private KandidatStortingsvalgRepository kandidatRepository;
     @Autowired
     private ScraperFactory scraperFactory;
+    @Autowired
+    private StortingApiClient stortingApiClient;
 
     /**
      * Starter skraping av kandidatnavn fra NRK, VG, E24 og Dagbladet.
@@ -191,9 +198,14 @@ public final class ScraperStart {
             List<KandidatStortingsvalg> existingKandidatList = kandidatRepository.findAllWithLinks();
             LOGGER.info("Hentet {} eksisterende kandidater fra database", existingKandidatList.size());
 
-            Map<String, KandidatStortingsvalg> existingKandidatMap = existingKandidatList
+            Map<String, KandidatStortingsvalg> existingKandidatMap = new java.util.HashMap<>(existingKandidatList
                     .stream()
-                    .collect(Collectors.toMap(KandidatStortingsvalg::getNavn, kandidat -> kandidat));
+                    .collect(Collectors.toMap(KandidatStortingsvalg::getNavn, kandidat -> kandidat)));
+
+            // Auto-opprett kandidat-rader for politikere fra Stortinget-APIet
+            // som vi har ekstrahert fra tekst men som mangler i databasen.
+            // Uten dette ville de blitt droppet i else-grenen under.
+            autoOpprettApiKandidater(allKandidatNames, existingKandidatMap);
 
             List<KandidatLink> kandidatLinksToSave = new ArrayList<>();
             int newLinksCount = 0;
@@ -239,5 +251,104 @@ public final class ScraperStart {
             LOGGER.error("Feil under prosessering av kandidater: ", e);
             throw e;
         }
+    }
+
+    /**
+     * For hvert ekstrahert navn som ikke finnes i databasen, sjekk om
+     * Stortinget-APIet har personen (regjeringsmedlem eller representant).
+     * Hvis ja — opprett en ny {@link KandidatStortingsvalg}-rad med
+     * berikede felter (parti, valgdistrikt, fødselsdato, kjønn, stilling)
+     * og legg den til i {@code existingKandidatMap} slik at den videre
+     * save-løkka lager {@link KandidatLink} for personen.
+     *
+     * <p>Dette lukker hullet der politikere som {@code KandidatNameExtractor}
+     * finner via API-berikelse ville blitt droppet fordi save-logikken
+     * krever en eksisterende rad i {@code kandidat_stortingsvalg}.
+     *
+     * @param allKandidatNames    alle ekstraherte navn fra artiklene
+     * @param existingKandidatMap map som muteres med nye API-genererte rader
+     */
+    private void autoOpprettApiKandidater(
+            final Set<String> allKandidatNames,
+            final Map<String, KandidatStortingsvalg> existingKandidatMap) {
+        Set<String> manglendeNavn = new HashSet<>();
+        for (String navn : allKandidatNames) {
+            if (!existingKandidatMap.containsKey(navn)) {
+                manglendeNavn.add(navn);
+            }
+        }
+        if (manglendeNavn.isEmpty()) {
+            LOGGER.info("Alle {} ekstraherte navn finnes allerede i databasen",
+                allKandidatNames.size());
+            return;
+        }
+
+        LOGGER.info("{} ekstraherte navn mangler i DB — sjekker Stortinget-APIet",
+            manglendeNavn.size());
+
+        List<StortingPerson> apiPersoner;
+        try {
+            apiPersoner = stortingApiClient.hentAllePolitikereDetaljert();
+        } catch (Exception e) {
+            LOGGER.warn("Kunne ikke hente fra Stortinget-APIet — "
+                + "hopper over auto-opprettelse: {}", e.getMessage());
+            return;
+        }
+
+        Map<String, StortingPerson> apiMap = apiPersoner.stream()
+            .collect(Collectors.toMap(
+                StortingPerson::fulltNavn,
+                p -> p,
+                (a, b) -> a));   // regjering vinner over representant ved duplikat
+
+        String periodeLabel = "Stortinget " + stortingApiClient.gjeldendeStortingsperiode();
+        List<KandidatStortingsvalg> nyeKandidater = new ArrayList<>();
+        for (String navn : manglendeNavn) {
+            StortingPerson person = apiMap.get(navn);
+            if (person == null) {
+                LOGGER.debug("Navn '{}' ikke funnet i API-et — droppes", navn);
+                continue;
+            }
+            KandidatStortingsvalg nyKandidat = byggKandidatFraApi(person, periodeLabel);
+            nyeKandidater.add(nyKandidat);
+            existingKandidatMap.put(navn, nyKandidat);
+            LOGGER.info("Auto-oppretter kandidat fra API: '{}' (parti={}, stilling={})",
+                navn, person.partinavn(), person.stilling());
+        }
+
+        if (!nyeKandidater.isEmpty()) {
+            kandidatRepository.saveAll(nyeKandidater);
+            LOGGER.info("Lagret {} nye kandidater fra Stortinget-APIet", nyeKandidater.size());
+        }
+    }
+
+    /**
+     * Bygger en {@link KandidatStortingsvalg} fra en {@link StortingPerson}.
+     * Fyller ut alle felter vi har data for fra API-et; udefinerte felter
+     * ({@code display_order}, {@code kandidatnr}, {@code bosted}) settes
+     * til {@code null}.
+     *
+     * @param person        politiker fra Stortinget-APIet
+     * @param periodeLabel  menneskelesbar periode-etikett, f.eks.
+     *                      "Stortinget 2025-2029"
+     * @return ny kandidat-entitet klar for persist
+     */
+    private KandidatStortingsvalg byggKandidatFraApi(
+            final StortingPerson person, final String periodeLabel) {
+        Integer alder = null;
+        if (person.foedselsdato() != null) {
+            alder = Period.between(person.foedselsdato(), LocalDate.now()).getYears();
+        }
+        return KandidatStortingsvalg.builder()
+            .navn(person.fulltNavn())
+            .valg(periodeLabel)
+            .valgdistrikt(person.valgdistrikt())
+            .partikode(person.partikode())
+            .partinavn(person.partinavn())
+            .foedselsdato(person.foedselsdato())
+            .alder(alder)
+            .kjoenn(person.kjoenn())
+            .stilling(person.stilling())
+            .build();
     }
 }

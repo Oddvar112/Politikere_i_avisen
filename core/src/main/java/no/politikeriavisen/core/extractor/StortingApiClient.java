@@ -27,13 +27,16 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
 /**
- * Klient som henter navn på nåværende regjeringsmedlemmer og
- * stortingsrepresentanter fra Stortingets åpne data-API
- * (https://data.stortinget.no).
+ * Klient som henter navn og detaljinformasjon om nåværende
+ * regjeringsmedlemmer og stortingsrepresentanter fra Stortingets
+ * åpne data-API (https://data.stortinget.no).
  *
- * Brukes til å berike kandidat-matchingen slik at vi ikke bare matcher
+ * <p>Brukes til å berike kandidat-matchingen slik at vi ikke bare matcher
  * mot kandidater lagret i vår egen database, men også mot sittende
- * rikspolitikere.
+ * rikspolitikere. I tillegg brukes de detaljerte metodene av
+ * {@code ScraperStart} til å auto-opprette {@code KandidatStortingsvalg}-
+ * rader for politikere som dukker opp i avisen men som ikke finnes i
+ * databasen fra før.
  */
 @Component
 public class StortingApiClient {
@@ -96,7 +99,9 @@ public class StortingApiClient {
      *         hvis APIet ikke er tilgjengelig.
      */
     public List<String> hentRegjeringsmedlemmer() {
-        return hentNavnFraApi(REGJERING_URL, "regjeringsmedlem");
+        return hentRegjeringsmedlemmerDetaljert().stream()
+            .map(StortingPerson::fulltNavn)
+            .toList();
     }
 
     /**
@@ -107,10 +112,45 @@ public class StortingApiClient {
      *         hvis APIet ikke er tilgjengelig.
      */
     public List<String> hentStortingsrepresentanter() {
+        return hentStortingsrepresentanterDetaljert().stream()
+            .map(StortingPerson::fulltNavn)
+            .toList();
+    }
+
+    /**
+     * Henter alle regjeringsmedlemmer med fullt feltsett (parti,
+     * fødselsdato, kjønn, stilling osv.).
+     *
+     * @return liste med {@link StortingPerson}, eller tom liste ved feil
+     */
+    public List<StortingPerson> hentRegjeringsmedlemmerDetaljert() {
+        return hentFraApi(REGJERING_URL, "regjeringsmedlem", true);
+    }
+
+    /**
+     * Henter alle stortingsrepresentanter for gjeldende periode med
+     * fullt feltsett (parti, valgdistrikt, fødselsdato, kjønn).
+     *
+     * @return liste med {@link StortingPerson}, eller tom liste ved feil
+     */
+    public List<StortingPerson> hentStortingsrepresentanterDetaljert() {
         String periode = gjeldendeStortingsperiode();
         String url = REPRESENTANTER_BASE_URL + periode;
         LOGGER.info("Henter stortingsrepresentanter for periode {}", periode);
-        return hentNavnFraApi(url, "representant");
+        return hentFraApi(url, "representant", false);
+    }
+
+    /**
+     * Henter alle politikere fra begge API-endepunktene som én samlet
+     * liste. Regjeringsmedlemmer kommer først.
+     *
+     * @return kombinert liste med alle sittende rikspolitikere
+     */
+    public List<StortingPerson> hentAllePolitikereDetaljert() {
+        List<StortingPerson> alle = new ArrayList<>();
+        alle.addAll(hentRegjeringsmedlemmerDetaljert());
+        alle.addAll(hentStortingsrepresentanterDetaljert());
+        return alle;
     }
 
     /**
@@ -148,14 +188,17 @@ public class StortingApiClient {
     }
 
     /**
-     * Henter og parser XML fra et Stortinget-endepunkt og returnerer alle
-     * fullt navn (fornavn + etternavn) fra elementer med gitt tag-navn.
+     * Henter og parser XML fra et Stortinget-endepunkt og returnerer
+     * {@link StortingPerson}-objekter for hver person.
      *
-     * @param url           URL til Stortinget-endepunktet
-     * @param elementNavn   XML-elementet som innkapsler hver person
-     * @return liste med fullt navn, eller tom liste ved feil
+     * @param url                URL til Stortinget-endepunktet
+     * @param elementNavn        XML-elementet som innkapsler hver person
+     * @param erRegjeringsmedlem true hvis endepunktet er regjerings-APIet
+     * @return liste med personer, eller tom liste ved feil
      */
-    private List<String> hentNavnFraApi(final String url, final String elementNavn) {
+    private List<StortingPerson> hentFraApi(final String url,
+                                            final String elementNavn,
+                                            final boolean erRegjeringsmedlem) {
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(REQUEST_TIMEOUT)
@@ -172,7 +215,7 @@ public class StortingApiClient {
                 return Collections.emptyList();
             }
 
-            return parseXml(response.body(), elementNavn);
+            return parseXml(response.body(), elementNavn, erRegjeringsmedlem);
         } catch (Exception e) {
             LOGGER.warn("Kunne ikke hente fra {}: {}", url, e.getMessage());
             return Collections.emptyList();
@@ -180,13 +223,17 @@ public class StortingApiClient {
     }
 
     /**
-     * Parser XML-respons og plukker ut fornavn+etternavn for hvert element.
+     * Parser XML-respons og bygger {@link StortingPerson} for hvert
+     * element.
      *
-     * @param xml           XML-innholdet som streng
-     * @param elementNavn   tag-navn for personelementene
-     * @return liste med fullt navn
+     * @param xml                XML-innholdet som streng
+     * @param elementNavn        tag-navn for personelementene
+     * @param erRegjeringsmedlem true hvis endepunktet er regjerings-APIet
+     * @return liste med personer
      */
-    private List<String> parseXml(final String xml, final String elementNavn) throws Exception {
+    private List<StortingPerson> parseXml(final String xml,
+                                          final String elementNavn,
+                                          final boolean erRegjeringsmedlem) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
         factory.setFeature(
@@ -198,18 +245,84 @@ public class StortingApiClient {
         Document doc = builder.parse(new InputSource(new StringReader(xml)));
         NodeList nodes = doc.getElementsByTagName(elementNavn);
 
-        List<String> navn = new ArrayList<>();
+        List<StortingPerson> personer = new ArrayList<>();
         for (int i = 0; i < nodes.getLength(); i++) {
             Node node = nodes.item(i);
             if (node instanceof Element element) {
                 String fornavn = hentDirekteTekst(element, "fornavn");
                 String etternavn = hentDirekteTekst(element, "etternavn");
-                if (!fornavn.isEmpty() && !etternavn.isEmpty()) {
-                    navn.add(fornavn + " " + etternavn);
+                if (fornavn.isEmpty() || etternavn.isEmpty()) {
+                    continue;
                 }
+
+                LocalDate foedselsdato = parseFoedselsdato(
+                    hentDirekteTekst(element, "foedselsdato"));
+                String kjoenn = tomSomNull(hentDirekteTekst(element, "kjoenn"));
+
+                // parti er et sub-element med id + navn
+                Element partiElement = finnDirekteBarnElement(element, "parti");
+                String partikode = null;
+                String partinavn = null;
+                if (partiElement != null) {
+                    partikode = tomSomNull(hentDirekteTekst(partiElement, "id"));
+                    partinavn = tomSomNull(hentDirekteTekst(partiElement, "navn"));
+                }
+
+                String valgdistrikt = null;
+                String stilling = null;
+                if (erRegjeringsmedlem) {
+                    // tittel = f.eks. "Finansminister", "Statsminister"
+                    stilling = tomSomNull(hentDirekteTekst(element, "tittel"));
+                } else {
+                    // representant har fylke som sub-element
+                    Element fylkeElement = finnDirekteBarnElement(element, "fylke");
+                    if (fylkeElement != null) {
+                        valgdistrikt = tomSomNull(
+                            hentDirekteTekst(fylkeElement, "navn"));
+                    }
+                }
+
+                personer.add(new StortingPerson(
+                    fornavn,
+                    etternavn,
+                    foedselsdato,
+                    kjoenn,
+                    partikode,
+                    partinavn,
+                    valgdistrikt,
+                    stilling,
+                    erRegjeringsmedlem
+                ));
             }
         }
-        return navn;
+        return personer;
+    }
+
+    /**
+     * Parser en ISO-8601-formatert dato-/tid-streng fra API-et
+     * (f.eks. "1959-03-16T00:00:00") og returnerer kun dato-delen.
+     *
+     * @param raw streng fra API-et
+     * @return {@link LocalDate}, eller {@code null} hvis parsing feiler
+     */
+    private LocalDate parseFoedselsdato(final String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            // Plukk datodelen før 'T' — håndterer både "1959-03-16T00:00:00"
+            // og "1959-03-16T00:00:00+02:00"
+            int tIdx = raw.indexOf('T');
+            String datoDel = tIdx > 0 ? raw.substring(0, tIdx) : raw;
+            return LocalDate.parse(datoDel);
+        } catch (Exception e) {
+            LOGGER.debug("Kunne ikke parse fødselsdato '{}': {}", raw, e.getMessage());
+            return null;
+        }
+    }
+
+    private String tomSomNull(final String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 
     /**
@@ -221,15 +334,30 @@ public class StortingApiClient {
      * @return tekstinnhold eller tom streng
      */
     private String hentDirekteTekst(final Element parent, final String tag) {
+        Element child = finnDirekteBarnElement(parent, tag);
+        if (child == null) {
+            return "";
+        }
+        String text = child.getTextContent();
+        return text != null ? text.trim() : "";
+    }
+
+    /**
+     * Finner første direkte barnelement med gitt tag-navn.
+     *
+     * @param parent  foreldre-elementet
+     * @param tag     tag-navnet å søke etter
+     * @return barnelementet, eller {@code null} hvis ikke funnet
+     */
+    private Element finnDirekteBarnElement(final Element parent, final String tag) {
         NodeList children = parent.getChildNodes();
         for (int i = 0; i < children.getLength(); i++) {
             Node child = children.item(i);
             if (child.getNodeType() == Node.ELEMENT_NODE
                 && tag.equals(child.getNodeName())) {
-                String text = child.getTextContent();
-                return text != null ? text.trim() : "";
+                return (Element) child;
             }
         }
-        return "";
+        return null;
     }
 }
