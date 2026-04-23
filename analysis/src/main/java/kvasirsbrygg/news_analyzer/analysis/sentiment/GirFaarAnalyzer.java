@@ -3,6 +3,8 @@ package kvasirsbrygg.news_analyzer.analysis.sentiment;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import kvasirsbrygg.news_analyzer.analysis.nlp.SentenceSplitter;
@@ -16,9 +18,17 @@ import kvasirsbrygg.news_analyzer.analysis.interfaces.TextInput;
 /**
  * GIR/FAAR analysis: combines dependency parsing (MaltParser) with NorBERT3 sentiment
  * to determine whether a person expresses (GIR) or receives (FAAR) sentiment.
+ *
+ * <p>For hver setning som nevner personen gjøres NorBERT-inferensen én gang,
+ * og resultatet samles i en {@link AnalyzedSentence}-liste slik at persistens-
+ * laget kan lagre per-setning data. Setninger der SubjectDetector feiler
+ * klassifiseres som {@link AnalyzedSentence.Rolle#UKJENT} og inngår ikke i
+ * GIR-/FAAR-aggregatet, men lagres likevel for transparens.
  */
 @Component
 public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSentiment> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(GirFaarAnalyzer.class);
 
     private static final SentimentScore NEUTRAL = new SentimentScore(0.5, 0.5, 0);
 
@@ -40,35 +50,74 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
 
         List<String> nameVariants = buildNameVariants(input);
 
-        List<String> girSentences = new ArrayList<>();
-        List<String> faarSentences = new ArrayList<>();
+        List<AnalyzedSentence> analyserteSetninger = new ArrayList<>();
+        double girPositivSum = 0;
+        double girNegativSum = 0;
+        int girCount = 0;
+        double faarPositivSum = 0;
+        double faarNegativSum = 0;
+        int faarCount = 0;
 
-        for (String sentence : sentences) {
+        for (int i = 0; i < sentences.size(); i++) {
+            String sentence = sentences.get(i);
             String matchedName = findMatchingName(sentence, nameVariants);
             if (matchedName == null) {
                 continue;
             }
 
-            boolean isSubject = subjectDetector.analyze(
-                    new PersonSentenceInput(sentence, matchedName)).isSubject();
+            AnalyzedSentence.Rolle rolle = detectRolle(sentence, matchedName);
 
-            if (isSubject) {
-                girSentences.add(sentence);
-            } else {
-                faarSentences.add(sentence);
+            SentimentScore score = sentimentAnalyzer.analyze(new TextInput(sentence));
+
+            analyserteSetninger.add(new AnalyzedSentence(
+                    sentence,
+                    i,
+                    matchedName,
+                    rolle,
+                    score.sentiment(),
+                    score.positiveConfidence(),
+                    score.negativeConfidence()));
+
+            // Kun setninger vi faktisk klarte å klassifisere bidrar til aggregatet.
+            // UKJENT-setninger lagres for transparens, men påvirker ikke GIR/FAAR-snittet.
+            if (rolle == AnalyzedSentence.Rolle.GIR) {
+                girPositivSum += score.positiveConfidence();
+                girNegativSum += score.negativeConfidence();
+                girCount++;
+            } else if (rolle == AnalyzedSentence.Rolle.FAAR) {
+                faarPositivSum += score.positiveConfidence();
+                faarNegativSum += score.negativeConfidence();
+                faarCount++;
             }
         }
 
-        int total = girSentences.size() + faarSentences.size();
-        if (total == 0) {
-            SentimentScore neutral = NEUTRAL;
-            return new ArticleSentiment(neutral, neutral, 0);
+        int klassifisertTotal = girCount + faarCount;
+        if (klassifisertTotal == 0) {
+            // Ingen setninger klassifisert som GIR/FAAR; returner nøytralt aggregat
+            // men bevar eventuelle UKJENT-setninger så de fortsatt kan lagres.
+            return new ArticleSentiment(NEUTRAL, NEUTRAL, 0, analyserteSetninger);
         }
 
-        SentimentScore gir = averageSentiment(girSentences);
-        SentimentScore faar = averageSentiment(faarSentences);
+        SentimentScore gir = girCount > 0
+                ? new SentimentScore(girNegativSum / girCount, girPositivSum / girCount, girCount)
+                : NEUTRAL;
+        SentimentScore faar = faarCount > 0
+                ? new SentimentScore(faarNegativSum / faarCount, faarPositivSum / faarCount, faarCount)
+                : NEUTRAL;
 
-        return new ArticleSentiment(gir, faar, total);
+        return new ArticleSentiment(gir, faar, klassifisertTotal, analyserteSetninger);
+    }
+
+    private AnalyzedSentence.Rolle detectRolle(final String sentence, final String matchedName) {
+        try {
+            boolean isSubject = subjectDetector.analyze(
+                    new PersonSentenceInput(sentence, matchedName)).isSubject();
+            return isSubject ? AnalyzedSentence.Rolle.GIR : AnalyzedSentence.Rolle.FAAR;
+        } catch (AnalysisException e) {
+            LOGGER.debug("SubjectDetector feilet for navn '{}' i setning (markeres UKJENT): {}",
+                    matchedName, e.getMessage());
+            return AnalyzedSentence.Rolle.UKJENT;
+        }
     }
 
     private List<String> buildNameVariants(final ArticlePersonInput input) {
@@ -90,25 +139,5 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
             }
         }
         return null;
-    }
-
-    private SentimentScore averageSentiment(final List<String> sentences) throws AnalysisException {
-        if (sentences.isEmpty()) {
-            return NEUTRAL;
-        }
-
-        double totalPositive = 0;
-        double totalNegative = 0;
-
-        for (String sentence : sentences) {
-            SentimentScore score = sentimentAnalyzer.analyze(new TextInput(sentence));
-            totalNegative += score.negativeConfidence();
-            totalPositive += score.positiveConfidence();
-        }
-
-        return new SentimentScore(
-                totalNegative / sentences.size(),
-                totalPositive / sentences.size(),
-                sentences.size());
     }
 }

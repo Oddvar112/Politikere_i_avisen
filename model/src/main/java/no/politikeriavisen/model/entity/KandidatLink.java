@@ -1,5 +1,6 @@
 package no.politikeriavisen.model.entity;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.EnumType;
@@ -8,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Column;
 import lombok.Getter;
 import lombok.Setter;
@@ -16,13 +18,15 @@ import lombok.AllArgsConstructor;
 import lombok.ToString;
 import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = "kandidat")
+@ToString(exclude = {"kandidat", "setninger"})
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class KandidatLink {
 
@@ -63,6 +67,14 @@ public class KandidatLink {
     private Double faarNegativScore;
 
     /**
+     * Alle setninger som ble kjørt gjennom sentimentanalysen for denne
+     * kandidat/artikkel-koblingen. Hver setning har en rolle (GIR/FAAR/UKJENT)
+     * og individuelle scorer som tilsammen utgjør aggregatet over.
+     */
+    @OneToMany(mappedBy = "kandidatLink", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<AnalysertSetning> setninger = new HashSet<>();
+
+    /**
      * Setter lenken og identifiserer automatisk nettsted basert på URL-en.
      *
      * @param link URL-en som skal lagres
@@ -85,5 +97,18 @@ public class KandidatLink {
         kandidatLink.setKandidat(kandidat);
         kandidatLink.setScrapedAt(LocalDateTime.now());
         return kandidatLink;
+    }
+
+    /**
+     * Legger til en analysert setning og holder den bidireksjonelle relasjonen
+     * konsistent. Speiler {@code KandidatStortingsvalg.addLink()}.
+     *
+     * @param setning setning som skal knyttes til denne koblingen
+     */
+    public void addSetning(final AnalysertSetning setning) {
+        if (setning != null) {
+            this.setninger.add(setning);
+            setning.setKandidatLink(this);
+        }
     }
 }

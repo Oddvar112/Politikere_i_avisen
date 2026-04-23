@@ -8,9 +8,13 @@ import java.util.stream.Collectors;
 
 import kvasirsbrygg.news_analyzer.analysis.interfaces.AnalysisException;
 import kvasirsbrygg.news_analyzer.analysis.interfaces.ArticlePersonInput;
+import kvasirsbrygg.news_analyzer.analysis.sentiment.AnalyzedSentence;
 import kvasirsbrygg.news_analyzer.analysis.sentiment.ArticleSentiment;
 import kvasirsbrygg.news_analyzer.analysis.sentiment.GirFaarAnalyzer;
+import no.politikeriavisen.model.entity.AnalysertSetning;
 import no.politikeriavisen.model.entity.KandidatLink;
+import no.politikeriavisen.model.entity.Sentiment;
+import no.politikeriavisen.model.entity.SetningRolle;
 import no.politikeriavisen.model.repository.KandidatLinkRepository;
 import org.jsoup.Jsoup;
 import org.slf4j.Logger;
@@ -66,6 +70,21 @@ public class SentimentAnalysisService {
                     kl.setFaarSentiment(resultat.faar().sentiment().name());
                     kl.setFaarPositivScore(resultat.faar().positiveConfidence());
                     kl.setFaarNegativScore(resultat.faar().negativeConfidence());
+
+                    // Persister hver analyserte setning. CascadeType.ALL på
+                    // KandidatLink.setninger sørger for at save(kl) også lagrer dem.
+                    for (AnalyzedSentence s : resultat.setninger()) {
+                        AnalysertSetning entitet = AnalysertSetning.builder()
+                                .tekst(s.tekst())
+                                .posisjon(s.posisjon())
+                                .matchetNavn(s.matchetNavn())
+                                .rolle(SetningRolle.valueOf(s.rolle().name()))
+                                .sentiment(Sentiment.valueOf(s.sentiment().name()))
+                                .positivScore(s.positivScore())
+                                .negativScore(s.negativScore())
+                                .build();
+                        kl.addSetning(entitet);
+                    }
 
                     kandidatLinkRepository.save(kl);
                     lagret++;
