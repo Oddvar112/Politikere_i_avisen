@@ -401,6 +401,28 @@ public final class ScraperStart {
     }
 
     /**
+     * Normaliserer kjønn-verdien fra Stortinget-APIet (som returnerer
+     * lowercase "mann"/"kvinne") til samme format som eksisterende DB-rader
+     * ("Mann"/"Kvinne"). Uten dette ender vi opp med fire distinkte verdier
+     * i kjoenn-kolonnen og duplisert kjønnsfordeling i UI-aggregatene.
+     *
+     * @param kjoenn  rå verdi, kan være {@code null}
+     * @return        Stor-forbokstav-variant, eller {@code null}/original ved
+     *                uventet input
+     */
+    private static String normaliserKjoenn(final String kjoenn) {
+        if (kjoenn == null) {
+            return null;
+        }
+        String trimmet = kjoenn.trim();
+        if (trimmet.isEmpty()) {
+            return null;
+        }
+        return Character.toUpperCase(trimmet.charAt(0))
+            + trimmet.substring(1).toLowerCase();
+    }
+
+    /**
      * Bygger en {@link KandidatStortingsvalg} fra en {@link StortingPerson}.
      * Fyller ut alle felter vi har data for fra API-et; udefinerte felter
      * ({@code display_order}, {@code kandidatnr}, {@code bosted}) settes
@@ -425,7 +447,7 @@ public final class ScraperStart {
             .partinavn(person.partinavn())
             .foedselsdato(person.foedselsdato())
             .alder(alder)
-            .kjoenn(person.kjoenn())
+            .kjoenn(normaliserKjoenn(person.kjoenn()))
             .stilling(person.stilling())
             .build();
     }
