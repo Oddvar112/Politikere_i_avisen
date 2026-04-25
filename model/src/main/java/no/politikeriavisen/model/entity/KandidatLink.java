@@ -18,8 +18,8 @@ import lombok.AllArgsConstructor;
 import lombok.ToString;
 import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Getter
@@ -72,7 +72,7 @@ public class KandidatLink {
      * og individuelle scorer som tilsammen utgjør aggregatet over.
      */
     @OneToMany(mappedBy = "kandidatLink", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<AnalysertSetning> setninger = new HashSet<>();
+    private List<AnalysertSetning> setninger = new ArrayList<>();
 
     /**
      * Setter lenken og identifiserer automatisk nettsted basert på URL-en.
