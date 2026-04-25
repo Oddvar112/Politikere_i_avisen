@@ -48,6 +48,18 @@ class NorBertSentimentTranslator implements Translator<String, SentimentScore> {
         NDArray probabilities = exp.div(exp.sum());
         float[] probs = probabilities.toFloatArray();
 
+        if (probs.length == 3) {
+            // 3-label modell (f.eks. Cardiff XLM-RoBERTa): [negativ, nøytral, positiv].
+            float neg = probs[0];
+            float neutral = probs[1];
+            float pos = probs[2];
+            if (neutral >= neg && neutral >= pos) {
+                return new SentimentScore(0.0, 0.0);
+            }
+            double sum = neg + pos;
+            return new SentimentScore(neg / sum, pos / sum);
+        }
+        // 2-label modell: [negativ, positiv].
         return new SentimentScore(probs[0], probs[1]);
     }
 }

@@ -17,7 +17,7 @@ public class SetupRunner implements ApplicationRunner {
     private static final Path CACHE = Path.of(System.getProperty("user.home"), ".cache", "news-analyzer");
     private static final Path MODEL_ONNX = CACHE.resolve("sentiment-model/model.onnx");
     private static final Path MALTPARSER_MODEL = CACHE.resolve("maltparser/norsk-bokmaal.mco");
-    private static final String SENTIMENT_MODEL = "Kushtrim/norbert3-large-norsk-sentiment-sst2";
+    private static final String SENTIMENT_MODEL = "cardiffnlp/twitter-xlm-roberta-base-sentiment-multilingual";
 
     @Override
     public void run(final ApplicationArguments args) throws Exception {

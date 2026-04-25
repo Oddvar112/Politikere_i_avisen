@@ -3,12 +3,14 @@ Exports a HuggingFace sentiment model to ONNX format for use in Java/DJL.
 
 Usage:
     pip install transformers torch onnx onnxruntime
-    python export_model.py <huggingface-model-name>
+    python export_model.py <huggingface-model-name> [output-subdir]
 
-Example:
+Examples:
     python export_model.py Kushtrim/norbert3-large-norsk-sentiment-sst2
+    python export_model.py marcuskd/norbert2_sentiment_test1 sentiment-marcuskd
 
-The model is saved to ~/.cache/news-analyzer/sentiment-model/
+Default output: ~/.cache/news-analyzer/sentiment-model/
+With subdir:    ~/.cache/news-analyzer/<subdir>/
 """
 import shutil
 import sys
@@ -16,22 +18,27 @@ import torch
 from pathlib import Path
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-OUTPUT_DIR = Path.home() / ".cache" / "news-analyzer" / "sentiment-model"
+CACHE_ROOT = Path.home() / ".cache" / "news-analyzer"
 
 if len(sys.argv) < 2:
-    print("Usage: python export_model.py <huggingface-model-name>")
+    print("Usage: python export_model.py <huggingface-model-name> [output-subdir]")
     print("Example: python export_model.py Kushtrim/norbert3-large-norsk-sentiment-sst2")
     sys.exit(1)
 
 model_name = sys.argv[1]
+output_subdir = sys.argv[2] if len(sys.argv) > 2 else "sentiment-model"
+OUTPUT_DIR = CACHE_ROOT / output_subdir
 print(f"Model:  {model_name}")
 print(f"Output: {OUTPUT_DIR}")
 
 model = AutoModelForSequenceClassification.from_pretrained(model_name, trust_remote_code=True)
 
-if model.config.num_labels != 2:
-    print(f"\nError: Model has {model.config.num_labels} labels, expected 2 (negative/positive).")
+if model.config.num_labels < 2:
+    print(f"\nError: Model has {model.config.num_labels} labels, need at least 2.")
     sys.exit(1)
+if model.config.num_labels != 2:
+    print(f"\nNote: Model has {model.config.num_labels} labels (id2label={model.config.id2label}). "
+          f"Default Java translator handles only 2 — caller must provide a custom translator for >2 labels.")
 
 tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 model.eval()

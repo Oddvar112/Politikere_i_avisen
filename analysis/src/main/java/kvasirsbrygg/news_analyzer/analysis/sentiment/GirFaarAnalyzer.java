@@ -32,6 +32,22 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
 
     private static final SentimentScore NEUTRAL = new SentimentScore(0.5, 0.5, 0);
 
+    private static final List<String> NEGATIVE_TRIGGERS = List.of(
+            "kritisk", "kritiserer", "kritikk", "kritikkverdig",
+            "hardt ut mot", "går hardt ut",
+            "går til angrep", "angriper",
+            "raser mot", "rasende",
+            "anklager", "fordømmer", "slakter",
+            "skandale", "skandaløs",
+            "protesterer mot", "protest mot",
+            "tar avstand fra",
+            "uakseptabelt", "uforsvarlig",
+            "skuffet", "misfornøyd",
+            "klandrer",
+            "advarer mot");
+
+    private static final SentimentScore LEXICON_NEGATIVE = new SentimentScore(0.95, 0.05);
+
     private final SentenceSplitter sentenceSplitter;
     private final SubjectDetector subjectDetector;
     private final NorBertSentimentAnalyzer sentimentAnalyzer;
@@ -67,7 +83,8 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
 
             AnalyzedSentence.Rolle rolle = detectRolle(sentence, matchedName);
 
-            SentimentScore score = sentimentAnalyzer.analyze(new TextInput(sentence));
+            SentimentScore raw = sentimentAnalyzer.analyze(new TextInput(sentence));
+            SentimentScore score = applyLexicon(sentence, raw);
 
             analyserteSetninger.add(new AnalyzedSentence(
                     sentence,
@@ -139,5 +156,22 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
             }
         }
         return null;
+    }
+
+    /**
+     * Overstyrer modellens score til sterkt negativ hvis setningen inneholder et
+     * trigger-ord fra {@link #NEGATIVE_TRIGGERS}. Brukes som sikkerhetsnett mot
+     * tilfeller der den multilinguale modellen feilklassifiserer typiske norske
+     * kritikk-formuleringer som positive eller nøytrale.
+     */
+    private SentimentScore applyLexicon(final String sentence, final SentimentScore raw) {
+        String lower = sentence.toLowerCase();
+        for (String trigger : NEGATIVE_TRIGGERS) {
+            if (lower.contains(trigger)) {
+                LOGGER.debug("Leksikon-override: '{}' i setning, score satt til negativ.", trigger);
+                return LEXICON_NEGATIVE;
+            }
+        }
+        return raw;
     }
 }
