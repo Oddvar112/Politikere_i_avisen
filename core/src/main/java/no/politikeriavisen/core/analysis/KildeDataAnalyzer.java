@@ -39,9 +39,11 @@ public class KildeDataAnalyzer {
             String[] alleGirSentiment = splitOrEmpty((String) rad[7]);
             String[] alleGirPositiv = splitOrEmpty((String) rad[8]);
             String[] alleGirNegativ = splitOrEmpty((String) rad[9]);
-            String[] alleFaarSentiment = splitOrEmpty((String) rad[10]);
-            String[] alleFaarPositiv = splitOrEmpty((String) rad[11]);
-            String[] alleFaarNegativ = splitOrEmpty((String) rad[12]);
+            String[] alleGirNoytral = splitOrEmpty((String) rad[10]);
+            String[] alleFaarSentiment = splitOrEmpty((String) rad[11]);
+            String[] alleFaarPositiv = splitOrEmpty((String) rad[12]);
+            String[] alleFaarNegativ = splitOrEmpty((String) rad[13]);
+            String[] alleFaarNoytral = splitOrEmpty((String) rad[14]);
 
             if (lenkerString != null && !lenkerString.isEmpty()) {
                 String[] alleLenker = lenkerString.split(",");
@@ -58,9 +60,11 @@ public class KildeDataAnalyzer {
                         }
                         artikkel.setGirSentiment(valueAt(alleGirSentiment, i));
                         artikkel.setGirPositivScore(doubleAt(alleGirPositiv, i));
+                        artikkel.setGirNoytralScore(doubleAt(alleGirNoytral, i));
                         artikkel.setGirNegativScore(doubleAt(alleGirNegativ, i));
                         artikkel.setFaarSentiment(valueAt(alleFaarSentiment, i));
                         artikkel.setFaarPositivScore(doubleAt(alleFaarPositiv, i));
+                        artikkel.setFaarNoytralScore(doubleAt(alleFaarNoytral, i));
                         artikkel.setFaarNegativScore(doubleAt(alleFaarNegativ, i));
                         artikler.add(artikkel);
                     }

@@ -37,9 +37,11 @@ public class ArtikelSentimentController {
                         kl.getKandidat().getNavn(),
                         kl.getGirSentiment(),
                         kl.getGirPositivScore(),
+                        kl.getGirNoytralScore(),
                         kl.getGirNegativScore(),
                         kl.getFaarSentiment(),
                         kl.getFaarPositivScore(),
+                        kl.getFaarNoytralScore(),
                         kl.getFaarNegativScore()))
                 .toList();
         return ResponseEntity.ok(result);

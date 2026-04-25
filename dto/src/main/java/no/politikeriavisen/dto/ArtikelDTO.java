@@ -14,8 +14,10 @@ public class ArtikelDTO {
     private LocalDate scraped;
     private String girSentiment;
     private Double girPositivScore;
+    private Double girNoytralScore;
     private Double girNegativScore;
     private String faarSentiment;
     private Double faarPositivScore;
+    private Double faarNoytralScore;
     private Double faarNegativScore;
 }

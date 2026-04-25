@@ -54,6 +54,9 @@ public class KandidatLink {
     @Column(name = "gir_positiv_score")
     private Double girPositivScore;
 
+    @Column(name = "gir_noytral_score")
+    private Double girNoytralScore;
+
     @Column(name = "gir_negativ_score")
     private Double girNegativScore;
 
@@ -62,6 +65,9 @@ public class KandidatLink {
 
     @Column(name = "faar_positiv_score")
     private Double faarPositivScore;
+
+    @Column(name = "faar_noytral_score")
+    private Double faarNoytralScore;
 
     @Column(name = "faar_negativ_score")
     private Double faarNegativScore;

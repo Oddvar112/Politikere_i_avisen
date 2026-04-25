@@ -65,10 +65,12 @@ public class SentimentAnalysisService {
 
                     kl.setGirSentiment(resultat.gir().sentiment().name());
                     kl.setGirPositivScore(resultat.gir().positiveConfidence());
+                    kl.setGirNoytralScore(resultat.gir().neutralConfidence());
                     kl.setGirNegativScore(resultat.gir().negativeConfidence());
 
                     kl.setFaarSentiment(resultat.faar().sentiment().name());
                     kl.setFaarPositivScore(resultat.faar().positiveConfidence());
+                    kl.setFaarNoytralScore(resultat.faar().neutralConfidence());
                     kl.setFaarNegativScore(resultat.faar().negativeConfidence());
 
                     // Persister hver analyserte setning. CascadeType.ALL på
@@ -81,6 +83,7 @@ public class SentimentAnalysisService {
                                 .rolle(SetningRolle.valueOf(s.rolle().name()))
                                 .sentiment(Sentiment.valueOf(s.sentiment().name()))
                                 .positivScore(s.positivScore())
+                                .noytralScore(s.noytralScore())
                                 .negativScore(s.negativScore())
                                 .build();
                         kl.addSetning(entitet);

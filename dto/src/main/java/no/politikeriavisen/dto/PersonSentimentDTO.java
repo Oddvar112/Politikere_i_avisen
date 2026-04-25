@@ -11,8 +11,10 @@ public class PersonSentimentDTO {
     private String personNavn;
     private String girSentiment;
     private Double girPositivScore;
+    private Double girNoytralScore;
     private Double girNegativScore;
     private String faarSentiment;
     private Double faarPositivScore;
+    private Double faarNoytralScore;
     private Double faarNegativScore;
 }

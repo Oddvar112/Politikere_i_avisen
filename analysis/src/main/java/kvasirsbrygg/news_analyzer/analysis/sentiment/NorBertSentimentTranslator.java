@@ -50,16 +50,11 @@ class NorBertSentimentTranslator implements Translator<String, SentimentScore> {
 
         if (probs.length == 3) {
             // 3-label modell (f.eks. Cardiff XLM-RoBERTa): [negativ, nøytral, positiv].
-            float neg = probs[0];
-            float neutral = probs[1];
-            float pos = probs[2];
-            if (neutral >= neg && neutral >= pos) {
-                return new SentimentScore(0.0, 0.0);
-            }
-            double sum = neg + pos;
-            return new SentimentScore(neg / sum, pos / sum);
+            // Ingen kollaps — alle tre konfidensene bevares slik at persistens-
+            // og visningslaget kan vise dem.
+            return new SentimentScore(probs[0], probs[1], probs[2]);
         }
-        // 2-label modell: [negativ, positiv].
-        return new SentimentScore(probs[0], probs[1]);
+        // 2-label modell: [negativ, positiv]. Neutral settes til 0.
+        return new SentimentScore(probs[0], 0.0, probs[1]);
     }
 }

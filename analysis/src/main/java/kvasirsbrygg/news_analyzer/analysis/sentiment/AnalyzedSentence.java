@@ -5,7 +5,7 @@ import kvasirsbrygg.news_analyzer.domain.Sentiment;
 /**
  * Per-setning analyseresultat som leveres fra {@link GirFaarAnalyzer} til
  * persistens-laget. Modellerer én analysert setning med rolle (GIR/FAAR/UKJENT),
- * NorBERT-scorer og den matchende navnvarianten.
+ * 3-label sentiment-scorer (neg/nøytral/pos) og den matchende navnvarianten.
  *
  * <p>Holdes i analysis-modulen som en ren DTO slik at model-modulen ikke
  * trenger å avhenge av analysis; service-laget konverterer til
@@ -15,9 +15,10 @@ import kvasirsbrygg.news_analyzer.domain.Sentiment;
  * @param posisjon      indeks i artikkelen (0-basert) for rekkefølge-bevaring
  * @param matchetNavn   navnvarianten som traff (fullt navn, etternavn, alias)
  * @param rolle         GIR hvis personen er subjekt, FAAR hvis objekt, UKJENT ved parse-feil
- * @param sentiment     klassifisering basert på NorBERT-scorer
- * @param positivScore  NorBERT positiv-konfidensintervall [0.0, 1.0]
- * @param negativScore  NorBERT negativ-konfidensintervall [0.0, 1.0]
+ * @param sentiment     argmax-klassifisering basert på de tre konfidensene
+ * @param positivScore  modellens positiv-konfidens [0.0, 1.0]
+ * @param negativScore  modellens negativ-konfidens [0.0, 1.0]
+ * @param noytralScore  modellens nøytral-konfidens [0.0, 1.0] (0 for 2-label modeller)
  */
 public record AnalyzedSentence(
         String tekst,
@@ -26,7 +27,8 @@ public record AnalyzedSentence(
         Rolle rolle,
         Sentiment sentiment,
         double positivScore,
-        double negativScore) {
+        double negativScore,
+        double noytralScore) {
 
     public enum Rolle {
         GIR,

@@ -73,6 +73,9 @@ public class AnalysertSetning {
     @Column(name = "positiv_score")
     private Double positivScore;
 
+    @Column(name = "noytral_score")
+    private Double noytralScore;
+
     @Column(name = "negativ_score")
     private Double negativScore;
 

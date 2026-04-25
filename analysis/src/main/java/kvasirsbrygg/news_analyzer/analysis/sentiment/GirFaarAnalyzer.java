@@ -30,7 +30,9 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GirFaarAnalyzer.class);
 
-    private static final SentimentScore NEUTRAL = new SentimentScore(0.5, 0.5, 0);
+    // Helt nøytralt aggregat (alle tre konfidensene 0) brukt når en kandidat
+    // ikke har noen GIR/FAAR-klassifiserte setninger i artikkelen.
+    private static final SentimentScore NEUTRAL = new SentimentScore(0.0, 1.0, 0.0, 0);
 
     private static final List<String> NEGATIVE_TRIGGERS = List.of(
             "kritisk", "kritiserer", "kritikk", "kritikkverdig",
@@ -46,7 +48,10 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
             "klandrer",
             "advarer mot");
 
-    private static final SentimentScore LEXICON_NEGATIVE = new SentimentScore(0.95, 0.05);
+    // Leksikon-override: (neg=0.95, neutral=0.0, pos=0.05). Beholdt med
+    // eksakt samme pos/neg som før så detektoren i SentimentExample fortsatt
+    // gjenkjenner overrideen.
+    private static final SentimentScore LEXICON_NEGATIVE = new SentimentScore(0.95, 0.0, 0.05);
 
     private final SentenceSplitter sentenceSplitter;
     private final SubjectDetector subjectDetector;
@@ -69,9 +74,11 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
         List<AnalyzedSentence> analyserteSetninger = new ArrayList<>();
         double girPositivSum = 0;
         double girNegativSum = 0;
+        double girNoytralSum = 0;
         int girCount = 0;
         double faarPositivSum = 0;
         double faarNegativSum = 0;
+        double faarNoytralSum = 0;
         int faarCount = 0;
 
         for (int i = 0; i < sentences.size(); i++) {
@@ -93,17 +100,20 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
                     rolle,
                     score.sentiment(),
                     score.positiveConfidence(),
-                    score.negativeConfidence()));
+                    score.negativeConfidence(),
+                    score.neutralConfidence()));
 
             // Kun setninger vi faktisk klarte å klassifisere bidrar til aggregatet.
             // UKJENT-setninger lagres for transparens, men påvirker ikke GIR/FAAR-snittet.
             if (rolle == AnalyzedSentence.Rolle.GIR) {
                 girPositivSum += score.positiveConfidence();
                 girNegativSum += score.negativeConfidence();
+                girNoytralSum += score.neutralConfidence();
                 girCount++;
             } else if (rolle == AnalyzedSentence.Rolle.FAAR) {
                 faarPositivSum += score.positiveConfidence();
                 faarNegativSum += score.negativeConfidence();
+                faarNoytralSum += score.neutralConfidence();
                 faarCount++;
             }
         }
@@ -116,10 +126,18 @@ public class GirFaarAnalyzer implements Analyzer<ArticlePersonInput, ArticleSent
         }
 
         SentimentScore gir = girCount > 0
-                ? new SentimentScore(girNegativSum / girCount, girPositivSum / girCount, girCount)
+                ? new SentimentScore(
+                        girNegativSum / girCount,
+                        girNoytralSum / girCount,
+                        girPositivSum / girCount,
+                        girCount)
                 : NEUTRAL;
         SentimentScore faar = faarCount > 0
-                ? new SentimentScore(faarNegativSum / faarCount, faarPositivSum / faarCount, faarCount)
+                ? new SentimentScore(
+                        faarNegativSum / faarCount,
+                        faarNoytralSum / faarCount,
+                        faarPositivSum / faarCount,
+                        faarCount)
                 : NEUTRAL;
 
         return new ArticleSentiment(gir, faar, klassifisertTotal, analyserteSetninger);
