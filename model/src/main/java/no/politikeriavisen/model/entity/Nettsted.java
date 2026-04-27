@@ -52,7 +52,11 @@ public enum Nettsted {
             ScrapingMethod.RSS),
 
     VG("VG",
-            Arrays.asList("https://www.vg.no/"),
+            Arrays.asList(
+                    "https://www.vg.no/",
+                    "https://www.vg.no/nyheter/",
+                    "https://www.vg.no/nyheter/innenriks/",
+                    "https://www.vg.no/nyheter/utenriks/"),
             "vg.no",
             ScrapingMethod.FRONTPAGE_DOM),
 
