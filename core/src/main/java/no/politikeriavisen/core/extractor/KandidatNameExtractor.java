@@ -275,8 +275,7 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
             return foundNames;
         }
 
-        // NFC-normaliser teksten først så aksent-tegn matches (samme som i
-        // NorwegianNameExtractor.extractNamesWithRegex).
+        // NFC-normaliser teksten først så aksent-tegn matches.
         String normalizedText = Normalizer.normalize(text, Normalizer.Form.NFC);
 
         // 1) Enkelt-ords etternavn ("Støre", "Stoltenberg", osv.)
@@ -306,10 +305,9 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
     }
 
     /**
-     * Ekstraherer kandidatnavn fra tekst ved hjelp av regex og
-     * database-matching. Fanger både fullt navn (fornavn + etternavn,
-     * eventuelt med mellomnavn) og — for en smal hardkodet liste med
-     * svært kjente politikere — etternavn alene.
+     * Ekstraherer kandidatnavn fra tekst ved å sjekke om teksten inneholder
+     * hvert kjente kandidatnavn (contains-sjekk). Fanger også etternavn
+     * alene for en smal hardkodet liste med svært kjente politikere.
      *
      * @param text teksten som skal analyseres for kandidatnavn
      * @return sett med kanoniske kandidatnavn som er identifisert i teksten
@@ -323,11 +321,10 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
             return allFoundNames;
         }
 
-        List<String> regexNames = super.extractNamesWithRegex(text);
-        for (String regexName : regexNames) {
-            String originalName = finnKanoniskNavn(regexName);
-            if (originalName != null) {
-                allFoundNames.add(originalName);
+        String normalizedText = nfcLower(text);
+        for (Map.Entry<String, String> entry : kandidatNamesMap.entrySet()) {
+            if (normalizedText.contains(entry.getKey())) {
+                allFoundNames.add(entry.getValue());
             }
         }
 
@@ -335,39 +332,5 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         allFoundNames.addAll(extractKnownLastNames(text));
 
         return allFoundNames;
-    }
-
-    /**
-     * Slår opp et regex-funnet navn i kandidat-mappet, først ved eksakt
-     * lowercase-match, deretter med forkortet variant (første ord + siste
-     * ord) hvis navnet har mellomnavn.
-     *
-     * Dette gjør at "Lubna Boby Jaffery" i en artikkel matcher databasen
-     * sin registrerte "Lubna Jaffery", selv om vi ikke visste om mellomnavnet
-     * på forhånd.
-     *
-     * @param regexName navn funnet av regex i artikkelen (alltid 2+ ord)
-     * @return kanonisk navn fra mappet, eller null hvis ingen match
-     */
-    private String finnKanoniskNavn(final String regexName) {
-        if (regexName == null || regexName.isBlank()) {
-            return null;
-        }
-
-        // 1) Eksakt lowercase-match (NFC-normalisert)
-        String exact = kandidatNamesMap.get(nfcLower(regexName));
-        if (exact != null) {
-            return exact;
-        }
-
-        // 2) Fallback: forkortet variant (første ord + siste ord) — kun hvis
-        //    det faktisk er mellomnavn å fjerne (3+ ord)
-        String[] parts = regexName.trim().split("\\s+");
-        if (parts.length >= 3) {
-            String kortNavn = nfcLower(parts[0] + " " + parts[parts.length - 1]);
-            return kandidatNamesMap.get(kortNavn);
-        }
-
-        return null;
     }
 }
