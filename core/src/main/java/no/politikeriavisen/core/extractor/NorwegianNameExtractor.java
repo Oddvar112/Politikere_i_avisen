@@ -1,6 +1,8 @@
 package no.politikeriavisen.core.extractor;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -13,11 +15,22 @@ import java.util.regex.Matcher;
 /**
  * NorwegianNameExtractor bruker regex for å finne norske personnavn i en tekst.
  * CoreNLP functionality has been commented out.
+ *
+ * <p>Regexen bruker Unicode property classes ({@code \p{Lu}}, {@code \p{L}})
+ * i stedet for å liste opp aksenttegn eksplisitt — så «Mímir», «Jaffery»,
+ * «Frédéric» osv. matches automatisk uten at vi trenger å vedlikeholde en
+ * tegnliste.
+ *
+ * <p>Inngangsteksten NFC-normaliseres før matching. Det er nødvendig fordi
+ * web-sider av og til serverer dekomponerte (NFD) Unicode-tegn — f.eks.
+ * «í» som «i» + kombinerende ´ — og kombinerende aksenter er {@code \p{M}},
+ * ikke {@code \p{L}}, så de bryter regex-matchingen midt i ordet uten
+ * normaliseringen.
  */
 public class NorwegianNameExtractor {
     private static final Pattern NAME_REGEX = Pattern.compile(
-            "[A-ZÆØÅÁÉÍÓÚÝÞÐ][a-zæøåáéíóúýþð]+"
-            + "(?:[ \\-][A-ZÆØÅÁÉÍÓÚÝÞÐ][a-zæøåáéíóúýþð]+){1,4}");
+            "\\p{Lu}\\p{L}+(?:[ \\-]\\p{Lu}\\p{L}+){1,4}",
+            Pattern.UNICODE_CHARACTER_CLASS);
     // private CoreNLPProcessor nlpProcessor; // COMMENTED OUT
 
     /**
@@ -66,8 +79,14 @@ public class NorwegianNameExtractor {
      * @return Liste med navn funnet av regex
      */
     public List<String> extractNamesWithRegex(final String text) {
+        if (text == null) {
+            return Collections.emptyList();
+        }
+        // NFC-normaliser før matching så dekomponerte aksenttegn (i + ´)
+        // blir til prekomponerte (í) og dermed matches av \p{L}. Mimir......
+        String normalized = Normalizer.normalize(text, Normalizer.Form.NFC);
         List<String> names = new ArrayList<>();
-        Matcher matcher = NAME_REGEX.matcher(text);
+        Matcher matcher = NAME_REGEX.matcher(normalized);
         while (matcher.find()) {
             String name = matcher.group();
             if (isValidNorwegianName(name)) {

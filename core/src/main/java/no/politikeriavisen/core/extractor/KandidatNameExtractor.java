@@ -1,5 +1,6 @@
 package no.politikeriavisen.core.extractor;
 
+import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,8 +43,12 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
     private Map<String, String> kandidatNamesMap = null;
     private Map<String, String> kjentEtternavnMap = null;
 
+    // Bruker Unicode property classes (\p{Lu} = uppercase, \p{L} = letter)
+    // i stedet for hardkodet aksent-liste. Tar dermed «Mímir», «Frédéric»
+    // osv. uten å måtte vedlikeholde tegnsettet.
     private static final Pattern ETTERNAVN_PATTERN =
-        Pattern.compile("\\b([A-ZÆØÅÁÉÍÓÚÝÞÐ][a-zæøåáéíóúýþðA-ZÆØÅÁÉÍÓÚÝÞÐ]+)\\b");
+        Pattern.compile("\\b(\\p{Lu}\\p{L}+)\\b",
+            Pattern.UNICODE_CHARACTER_CLASS);
 
     /**
      * Pattern for dobbel-etternavn ("Barth Eide" osv.) — to påfølgende
@@ -52,8 +57,8 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
      * sammensatt av to ord og ingen del er entydig alene.
      */
     private static final Pattern ETTERNAVN_COMPOUND_PATTERN =
-        Pattern.compile("\\b([A-ZÆØÅÁÉÍÓÚÝÞÐ][a-zæøåáéíóúýþðA-ZÆØÅÁÉÍÓÚÝÞÐ]+\\s+"
-            + "[A-ZÆØÅÁÉÍÓÚÝÞÐ][a-zæøåáéíóúýþðA-ZÆØÅÁÉÍÓÚÝÞÐ]+)\\b");
+        Pattern.compile("\\b(\\p{Lu}\\p{L}+\\s+\\p{Lu}\\p{L}+)\\b",
+            Pattern.UNICODE_CHARACTER_CLASS);
 
     /**
      * Kjente dobbel-etternavn hvor begge ord må matches sammen for å
@@ -88,13 +93,13 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         for (KandidatStortingsvalg kandidat : allKandidater) {
             if (kandidat.getNavn() != null && !kandidat.getNavn().trim().isEmpty()) {
                 String originalName = kandidat.getNavn().trim();
-                kandidatNamesMap.put(originalName.toLowerCase(), originalName);
+                kandidatNamesMap.put(nfcLower(originalName), originalName);
 
                 // Kun hardkodede superkjente får etternavn-alias
                 if (erKjentPolitiker(originalName)) {
                     String etternavn = hentEtternavn(originalName);
                     if (etternavn != null && !etternavn.isEmpty()) {
-                        kjentEtternavnMap.put(etternavn.toLowerCase(), originalName);
+                        kjentEtternavnMap.put(nfcLower(etternavn), originalName);
                     }
                 }
             }
@@ -151,7 +156,7 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
             return;
         }
 
-        String fullLower = apiFullName.toLowerCase();
+        String fullLower = nfcLower(apiFullName);
         String[] parts = apiFullName.trim().split("\\s+");
 
         // Finn kanonisk form: hvis DB har kortversjonen "fornavn etternavn",
@@ -159,7 +164,7 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         String canonical = apiFullName;
         if (parts.length >= 2) {
             String kortNavn = parts[0] + " " + parts[parts.length - 1];
-            String kortLower = kortNavn.toLowerCase();
+            String kortLower = nfcLower(kortNavn);
             String existing = kandidatNamesMap.get(kortLower);
             if (existing != null) {
                 canonical = existing;
@@ -176,9 +181,20 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         if (erKjentPolitiker(canonical)) {
             String etternavn = hentEtternavn(canonical);
             if (etternavn != null && !etternavn.isEmpty()) {
-                kjentEtternavnMap.putIfAbsent(etternavn.toLowerCase(), canonical);
+                kjentEtternavnMap.putIfAbsent(nfcLower(etternavn), canonical);
             }
         }
+    }
+
+    /**
+     * NFC-normaliser + lowercase. Brukes for både map-nøkler og oppslag,
+     * slik at NFD-input fra web-tekst matcher NFC-nøkler bygget fra DB.
+     */
+    private static String nfcLower(final String s) {
+        if (s == null) {
+            return null;
+        }
+        return Normalizer.normalize(s, Normalizer.Form.NFC).toLowerCase();
     }
 
     /**
@@ -259,26 +275,30 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
             return foundNames;
         }
 
+        // NFC-normaliser teksten først så aksent-tegn matches (samme som i
+        // NorwegianNameExtractor.extractNamesWithRegex).
+        String normalizedText = Normalizer.normalize(text, Normalizer.Form.NFC);
+
         // 1) Enkelt-ords etternavn ("Støre", "Stoltenberg", osv.)
-        Matcher matcher = ETTERNAVN_PATTERN.matcher(text);
+        Matcher matcher = ETTERNAVN_PATTERN.matcher(normalizedText);
         while (matcher.find()) {
             String potentialLastName = matcher.group(1);
-            String lowerLastName = potentialLastName.toLowerCase();
+            String key = nfcLower(potentialLastName);
 
-            if (kjentEtternavnMap.containsKey(lowerLastName)) {
-                foundNames.add(kjentEtternavnMap.get(lowerLastName));
+            if (kjentEtternavnMap.containsKey(key)) {
+                foundNames.add(kjentEtternavnMap.get(key));
             }
         }
 
         // 2) Dobbel-etternavn ("Barth Eide") — må ha egen pasning fordi
         //    enkelt-ords-regexen ikke fanger to-ords-mønsteret
-        Matcher compoundMatcher = ETTERNAVN_COMPOUND_PATTERN.matcher(text);
+        Matcher compoundMatcher = ETTERNAVN_COMPOUND_PATTERN.matcher(normalizedText);
         while (compoundMatcher.find()) {
             String potentialCompound = compoundMatcher.group(1);
-            String lowerCompound = potentialCompound.toLowerCase();
+            String key = nfcLower(potentialCompound);
 
-            if (kjentEtternavnMap.containsKey(lowerCompound)) {
-                foundNames.add(kjentEtternavnMap.get(lowerCompound));
+            if (kjentEtternavnMap.containsKey(key)) {
+                foundNames.add(kjentEtternavnMap.get(key));
             }
         }
 
@@ -334,8 +354,8 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
             return null;
         }
 
-        // 1) Eksakt lowercase-match
-        String exact = kandidatNamesMap.get(regexName.toLowerCase());
+        // 1) Eksakt lowercase-match (NFC-normalisert)
+        String exact = kandidatNamesMap.get(nfcLower(regexName));
         if (exact != null) {
             return exact;
         }
@@ -344,7 +364,7 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
         //    det faktisk er mellomnavn å fjerne (3+ ord)
         String[] parts = regexName.trim().split("\\s+");
         if (parts.length >= 3) {
-            String kortNavn = (parts[0] + " " + parts[parts.length - 1]).toLowerCase();
+            String kortNavn = nfcLower(parts[0] + " " + parts[parts.length - 1]);
             return kandidatNamesMap.get(kortNavn);
         }
 
