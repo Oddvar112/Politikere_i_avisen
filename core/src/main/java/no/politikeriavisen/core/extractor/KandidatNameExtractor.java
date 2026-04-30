@@ -217,7 +217,8 @@ public class KandidatNameExtractor extends NorwegianNameExtractor {
             "sandra borch", "borch",
             "peter christian frølich", "frølich",
             "jens stoltenberg", "stoltenberg",
-            "espen barth eide", "barth eide"
+            "espen barth eide", "barth eide",
+            "tore onshuus sandvik", "tore o. sandvik" 
         };
 
         for (String fragment : kjenteNavnFragmenter) {
