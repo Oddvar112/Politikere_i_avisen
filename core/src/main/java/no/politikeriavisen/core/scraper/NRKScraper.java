@@ -1,6 +1,8 @@
 package no.politikeriavisen.core.scraper;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -44,112 +46,74 @@ public class NRKScraper extends Scraper {
     }
 
     /**
-     * Henter full tekst (overskrift, ingress og brødtekst) fra et artikkeldokument.
+     * Henter full tekst (tittel, brødtekst, bildetekst og forfatter) fra et artikkeldokument.
      *
      * @param doc Artikkeldokument
      * @return Samlet tekst fra artikkelen
      */
     @Override
     public String getAllText(final Document doc) {
-        StringBuilder result = new StringBuilder();
-        Element articleElement = doc.selectFirst("article");
-        if (articleElement == null) {
-            return "";
-        }
-        Elements publishedElements = articleElement.select("*:contains(Publisert)");
-        int totalPublishedCount = 0;
-        for (Element pub : publishedElements) {
-            if (pub.ownText().trim().equals("Publisert")) {
-                totalPublishedCount++;
-            }
-        }
-        // Fjernet duplisert og feilaktig deklarasjon av skipContainers
-        final Elements skipContainers = articleElement.select(
-                "[class*=reference], "
-                + "[class*=image], "
-                + "[class*=gallery], "
-                + "[class*=galleri], "
-                + "[class*=article-location], "
-                + ".author, "
-                + ".authors, "
-                + "[class*=article-header-sidebar], "
-                + "figure, "
-                + "[class*=dh-infosveip], "
-                + "[data-name*=dh-infosveip]");
-        final Elements allElements = articleElement.select("*");
-        int publishedFound = 0;
-        for (final Element element : allElements) {
-            String tagName = element.tagName();
-            String ownText = element.ownText().trim();
-            String fullText = element.text().trim();
+        Set<String> paragraphs = new LinkedHashSet<>();
 
-            if (ownText.equals("Publisert") && totalPublishedCount > 0) {
-                publishedFound++;
-                if (publishedFound == totalPublishedCount) {
-                    break; // Stopp ved siste "Publisert"
-                }
-            }
+        paragraphs.add(getMetaContent(doc, "og:title"));
 
-            boolean isWithinSkipContainer = false;
-            for (final Element container : skipContainers) {
-                if (container.equals(element) || isChildOf(element, container)) {
-                    isWithinSkipContainer = true;
-                    break;
-                }
-            }
-
-            if (!isWithinSkipContainer) {
-                if (tagName.matches("p|div") && !fullText.isEmpty()) {
-                    String textToAdd = "";
-                    boolean foundSpecialChild = false;
-
-        for (final Element child : element.children()) {
-                        if (child.tagName().equals("strong")) {
-                            textToAdd = child.text();
-                            foundSpecialChild = true;
-                            break;
-                        }
-                    }
-
-                    if (!foundSpecialChild) {
-                        for (final Element child : element.children()) {
-                            if (child.hasClass("note-container")) {
-                                Element noteButton = child.selectFirst(".note-button, button");
-                                if (noteButton != null) {
-                                    textToAdd = noteButton.text();
-                                    foundSpecialChild = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    if (!foundSpecialChild) {
-                        textToAdd = ownText;
-                    }
-
-                    if (!textToAdd.isEmpty() && textToAdd.length() > 10) {
-                        result.append(textToAdd).append("\n");
-                    }
-                }
-            }
+        Element article = doc.selectFirst("article");
+        if (article != null) {
+            extractBodyText(article, paragraphs);
+            extractCaptions(article, paragraphs);
         }
 
-        return result.toString();
+        String author = getMetaContent(doc, "author");
+        if (!author.isEmpty()) {
+            paragraphs.add("Av: " + author);
+        }
+
+        paragraphs.remove("");
+        return String.join("\n", paragraphs);
     }
 
     /**
-     * Sjekker om et element er et barn av et gitt container-element.
-     *
-     * @param element Elementet som skal sjekkes
-     * @param container Container-elementet
-     * @return true hvis element er barn av container, ellers false
+     * Henter alle tekstparagrafer fra artikkelens brødtekst.
+     * Bruker fullText (element.text()) slik at lenkede navn fanges opp.
+     * Hopper over paragrafer inni aside og nav.
      */
-    private boolean isChildOf(final Element element, final Element container) {
+    private void extractBodyText(final Element root, final Set<String> paragraphs) {
+        for (Element p : root.select("p")) {
+            if (isInsideAny(p, "aside", "nav", "figure")) {
+                continue;
+            }
+            String text = p.text().trim();
+            if (!text.isEmpty()) {
+                paragraphs.add(text);
+            }
+        }
+    }
+
+    /**
+     * Henter bildetekster fra figcaption-elementer.
+     * Fanger opp navn som kun er nevnt i bildetekst.
+     * LinkedHashSet i kallende metode sørger for at tekst som allerede
+     * ble fanget via extractBodyText ikke dupliseres.
+     */
+    private void extractCaptions(final Element root, final Set<String> paragraphs) {
+        for (Element figcaption : root.select("figcaption")) {
+            String text = figcaption.text().trim();
+            if (!text.isEmpty()) {
+                paragraphs.add(text);
+            }
+        }
+    }
+
+    /**
+     * Sjekker om et element er barn av et av de oppgitte tag-navnene.
+     */
+    private boolean isInsideAny(final Element element, final String... tagNames) {
         Element parent = element.parent();
         while (parent != null) {
-            if (parent.equals(container)) {
-                return true;
+            for (String tag : tagNames) {
+                if (parent.tagName().equals(tag)) {
+                    return true;
+                }
             }
             parent = parent.parent();
         }
@@ -157,37 +121,18 @@ public class NRKScraper extends Scraper {
     }
 
     /**
-     * Henter forfatterinformasjon fra et artikkeldokument.
+     * Henter innholdet fra en meta-tag i dokumentet.
      *
-     * @param doc Artikkeldokument
-     * @return Forfatterinfo som streng, eller tom streng hvis ikke funnet
+     * @param doc  Dokumentet
+     * @param name Navn på meta-taggen (name eller property)
+     * @return Innholdet, eller tom streng hvis ikke funnet
      */
-    private String getAuthorInfo(final Document doc) {
-        StringBuilder authorInfo = new StringBuilder();
-        Element articleElement = doc.selectFirst("article");
-        if (articleElement == null) {
-            return "";
+    private String getMetaContent(final Document doc, final String name) {
+        String val = doc.select("meta[name=" + name + "]").attr("content");
+        if (val.isEmpty()) {
+            val = doc.select("meta[property=" + name + "]").attr("content");
         }
-        Elements authorElements = articleElement.select(
-                "[class*=author], [class*=journalist], [class*=byline]");
-        for (final Element authorElement : authorElements) {
-            String authorText = authorElement.text().trim();
-            if (!authorText.isEmpty() && authorText.length() > 3) {
-                authorText = authorText.replace("– Journalist", "").replace("- Journalist", "").trim();
-                if (!authorText.isEmpty()) {
-                    authorInfo.append(authorText).append(", ");
-                }
-            }
-        }
-        String result = authorInfo.toString();
-        if (result.endsWith(", ")) {
-            result = result.substring(0, result.length() - 2);
-        }
-        if (result.isEmpty()) {
-            return "";
-        } else {
-            return "Skrevet av: " + result;
-        }
+        return val.trim();
     }
 
     /**
